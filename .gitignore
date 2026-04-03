@@ -1,0 +1,15 @@
+# 忽略所有文件和文件夹
+*
+
+# 但允许以下目录（及目录内所有内容）
+!src/
+!src/**
+!results/
+!results/**
+
+# 但允许以下单独文件
+!readme.md
+!requirements.txt
+
+# 允许 .gitignore 文件本身被提交
+!.gitignore

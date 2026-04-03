@@ -1,0 +1,309 @@
+二、工程基础完善阶段
+这个阶段就是把你现在的代码从“能跑”变成“可做实验”。
+目标
+把实验记录机制和对照组补齐。
+具体做法
+1. 保存 config.json
+每次实验自动保存：
+
+experiment_name
+dataset
+model
+num_clients
+num_rounds
+local_epochs
+batch_size
+lr
+weight_decay
+seed
+split_type（iid / non-iid）
+device
+timestamp
+
+2. 加 centralized baseline
+比如：
+
+experiments/centralized_cifar10.py
+
+3. main.py 支持选择实验
+例如：
+
+fedavg_cifar10
+centralized_cifar10
+
+4. 结果目录统一管理
+像你现在这样按时间戳保存很好，继续保留。
+
+三、静态任务 baseline 实验
+这里先不加持续学习，只做“普通训练”。
+你要至少得到下面几组结果
+A. Centralized baseline
+
+全部训练集集中训练
+同模型
+同训练轮数（尽量公平）
+
+B. FedAvg baseline（IID）
+
+3 clients
+均匀划分
+
+C. FedAvg baseline（non-IID）
+
+3 clients
+类别偏斜划分
+
+
+这一步的目的
+回答下面这些问题：
+
+联邦训练能否正常收敛？
+non-IID 是否会使性能下降？
+centralized 和 federated 差多少？
+
+这部分基本就是你论文第 4 章的雏形。
+
+四、构造持续学习场景
+这是你毕设真正的核心阶段。
+你需要做什么
+把原来的“一个完整训练集一次性训练”，改成“分阶段来”。
+例如最简单的类增量方案
+以 CIFAR-10 为例：
+
+Stage 1：类 0-4
+Stage 2：类 5-9
+
+或者更细一点：
+
+Stage 1：0,1,2
+Stage 2：3,4,5
+Stage 3：6,7,8,9
+
+
+每个阶段怎么做
+阶段 1
+只训练旧类，测试旧类性能
+阶段 2
+引入新类，继续训练，测试：
+
+新类性能
+旧类性能是否下降
+
+阶段 3
+继续引入更多类，重复评估
+
+这一步你要记录的指标
+如果走分类路线：
+
+overall accuracy
+old-class accuracy
+new-class accuracy
+forgetting measure
+
+遗忘度一个常见定义
+对于旧任务/旧类别：
+$$F_t = \max_{k < t} a_{k} - a_t$$
+简单理解就是：
+
+某个旧任务曾经最好达到多少，后来掉到了多少，差值就是遗忘。
+
+
+五、先做“单机持续学习 baseline”
+这一组很重要，但很多人容易漏。
+对照组至少包括：
+1. 单机普通持续学习（naive fine-tuning）
+
+不做遗忘抑制
+顺序学新任务
+
+2. 单机持续学习 + replay
+
+保留少量旧样本回放
+
+3. 单机持续学习 + distillation
+
+用旧模型当 teacher
+
+
+这一步的意义
+它能回答：
+
+如果不加联邦，单机持续学习本身会遗忘多少？
+
+这样你以后才能判断：
+
+遗忘到底是持续学习本身造成的
+还是联邦场景又把问题放大了
+
+
+六、再做“联邦持续学习 baseline”
+这一步才是你毕设最关键的主实验。
+至少要做的组别
+1. 普通联邦学习
+
+非持续
+当作静态参照
+
+2. 联邦持续学习 baseline
+
+顺序引入新阶段
+不加任何抗遗忘方法
+
+3. 联邦持续学习 + replay
+
+客户端本地保留少量旧样本
+
+4. 联邦持续学习 + distillation
+
+本地训练时加入蒸馏损失
+
+5. 联邦持续学习 + replay + distillation
+
+这可以作为你的主要方法候选
+
+6. 可选：+ regularization
+
+如果时间够，再加 EWC / 简单参数正则
+不够就先不做
+
+
+七、第二个公开数据集
+这个是你任务书里需要特别注意的点。
+任务书明确写了：
+
+在 2 个不同的公开图像数据集上，模拟持续学习场景
+
+所以最终最好不要只有一个数据集。
+
+如果走分类路线，我建议第二个数据集选“小而稳”的
+比如可以考虑：
+
+CIFAR-100（取子集或分阶段）
+GTSRB
+SVHN
+FashionMNIST（太简单，不太像目标识别，不是首选）
+Tiny-ImageNet 子集
+
+更稳妥的组合建议
+
+数据集 1：CIFAR-10
+数据集 2：GTSRB 或 CIFAR-100 子任务
+
+这样更容易跑。
+
+如果走检测路线
+那第二个数据集就得是另一个检测数据集，工程量会很大。
+所以我才说分类路线更稳。
+
+八、通信与开销统计
+你开题报告里强调了“轻量化”和“通信效率”。
+所以后面实验不能只看精度，还要看开销。
+建议统计的内容
+1. 通信轮次
+就是 federated rounds 数量
+2. 参数传输量
+如果全模型上传下载：
+$$\text{cost per round} \approx 2 \times K \times P \times 4 \text{ bytes}$$
+其中：
+
+$K$：参与客户端数
+$P$：参数数量
+4 bytes：float32
+
+3. 本地训练耗时
+每轮 / 每阶段 / 总耗时
+4. 回放缓存大小
+比如每个客户端保存多少旧样本
+
+九、论文最终实验结构建议
+如果你后面按这个路线走，论文实验表格可以很清楚。
+第一组：静态训练
+
+Centralized
+FedAvg IID
+FedAvg non-IID
+
+第二组：单机持续学习
+
+Naive
+Replay
+Distillation
+
+第三组：联邦持续学习
+
+Naive FCL
+FCL + Replay
+FCL + Distillation
+FCL + Replay + Distillation
+
+第四组：消融实验
+
+去掉 replay
+去掉 distillation
+不同 replay buffer 大小
+是否加入正则项
+
+
+十、你现在最推荐的实际推进顺序
+如果按“最稳毕业”的思路，我建议你这样走：
+第 1 步
+先把当前 CIFAR 工程补完整：
+
+config.json
+centralized baseline
+main.py 支持多实验入口
+
+第 2 步
+跑 3 个基础实验：
+
+centralized_cifar10
+fedavg_cifar10_iid
+fedavg_cifar10_noniid
+
+第 3 步
+做最简单持续学习设置：
+
+CIFAR-10 两阶段类增量
+
+第 4 步
+做两个持续学习方法：
+
+replay
+distillation
+
+第 5 步
+把它们放到联邦场景
+第 6 步
+再补第二个数据集的关键对比实验
+
+给你一个比较具体的时间感
+按你现在的进度，我建议你脑子里这样排：
+现在到 3 月下旬
+完成：
+
+config 保存
+centralized baseline
+iid / non-iid baseline
+持续学习任务切分
+
+3 月下旬到 4 月上旬
+完成：
+
+单机持续学习 baseline
+联邦持续学习 baseline
+replay / distillation 版本
+
+4 月上旬到 4 月中下旬
+完成：
+
+第二数据集关键实验
+消融实验
+画图整理表格
+
+4 月下旬到 5 月初
+开始：
+
+写论文正文
+补缺失实验
+
+这个节奏是来得及的，但前提是不要在模型和路线选择上反复摇摆太久。
