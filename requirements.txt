@@ -1,0 +1,29 @@
+# 联邦学习项目依赖（Federated Learning Project Dependencies）
+# 推荐 Python 版本: 3.8 - 3.11
+
+# 深度学习框架
+torch>=2.0.0
+torchvision>=0.15.0
+
+# 数值计算和数据处理
+numpy>=1.21
+pandas>=1.3
+
+# 可视化
+matplotlib>=3.3
+
+# 科学计算（可选但推荐）
+scipy>=1.7
+
+# 实验追踪和日志（可选）
+# tensorboard>=2.10
+
+# 注意：
+# 对于 GPU 支持，请按照 PyTorch 官方指南安装 CUDA 版本的 PyTorch:
+# https://pytorch.org/get-started/locally/
+# 
+# 例如，对于 CUDA 11.8:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#
+# 对于 CPU 版本:
+#   pip install torch torchvision torchaudio

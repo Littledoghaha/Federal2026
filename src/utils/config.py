@@ -10,9 +10,10 @@ def load_config(config_path="config.json"):
         return json.load(f)
 
 
-def create_result_dir(experiment_name):
+def create_result_dir(dataset, method):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    result_dir = os.path.join("results", f"{experiment_name}_{timestamp}")
+    dir_name = f"{dataset}_{method}_{timestamp}"
+    result_dir = os.path.join("results", dir_name)
     os.makedirs(result_dir, exist_ok=True)
     return result_dir
 

@@ -43,12 +43,12 @@ A. Centralized baseline
 同模型
 同训练轮数（尽量公平）
 
-B. FedAvg baseline（IID）
+B. fedavg baseline（IID）
 
 3 clients
 均匀划分
 
-C. FedAvg baseline（non-IID）
+C. fedavg baseline（non-IID）
 
 3 clients
 类别偏斜划分
@@ -220,8 +220,8 @@ $P$：参数数量
 第一组：静态训练
 
 Centralized
-FedAvg IID
-FedAvg non-IID
+fedavg IID
+fedavg non-IID
 
 第二组：单机持续学习
 

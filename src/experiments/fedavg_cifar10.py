@@ -1,5 +1,5 @@
 """
-普通联邦学习（FedAvg）在 CIFAR-10 上的 baseline 实验。
+普通联邦学习（fedavg）在 CIFAR-10 上的 baseline 实验。
 """
 
 import torch
@@ -48,7 +48,7 @@ def run(config, save_dir):
     torch.save(global_model.state_dict(), model_save_path)
     save_history_json(history, os.path.join(save_dir, "history.json"))
     save_history_csv(history, os.path.join(save_dir, "history.csv"))
-    plot_history(history, save_dir, config["experiment_name"])
+    plot_history(history, save_dir, f'{config["dataset"]}_federated')
     print("\nDone.")
     print("test_acc history:", [round(x, 4) for x in history["test_acc"]])
     print(f"Results saved to: {save_dir}")

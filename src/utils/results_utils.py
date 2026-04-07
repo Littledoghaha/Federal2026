@@ -38,7 +38,7 @@ def save_history_csv(history, save_path):
             writer.writerow([r, loss, acc])
 
 
-def plot_history(history, save_dir, experiment_name="fedavg_cifar10"):
+def plot_history(history, save_dir, experiment_name="cifar10_federated"):
     ensure_dir(save_dir)
 
     rounds = history["round"]

@@ -1,5 +1,5 @@
 """
-FedAvg 训练流程。
+fedavg 训练流程。
 
 负责：
 
@@ -28,11 +28,15 @@ def average_state_dicts(state_dicts, weights):
         if torch.is_floating_point(avg_state[key]):
             avg_state[key] = torch.zeros_like(avg_state[key])
             for state, weight in zip(state_dicts, weights):
+                
+                # ***********************************
+                # *     第四步：服务器进行加权平均    *
+                # ***********************************
+                # 按客户端样本数量加权平均
+                # θ_global = Σ (ni / N) * θi
+                # ni = 第i个客户端样本数，N  = 所有客户端样本总数
                 avg_state[key] += state[key] * (weight / total_weight)
-                # ***********************************
-                # *           权重平均               *
-                # ***********************************
-                # 确认联邦平均算法的运行模式
+                
                 
         else:
             # 非浮点 tensor（当前模型基本不会碰到）
@@ -54,8 +58,9 @@ def fedavg_round(
     local_weights = []
 
     for client_id, train_loader in client_loaders.items():
+        # 第一步：服务器下发全局模型。服务器把当前模型复制给每个客户端, deepcopy 确保每个客户端模型独立
         local_model = copy.deepcopy(global_model).to(device)
-
+        # 第二步：客户端本地训练。客户端使用自己的数据训练模型
         local_model, history = train_local(
             model=local_model,
             train_loader=train_loader,
@@ -65,9 +70,9 @@ def fedavg_round(
             weight_decay=weight_decay,
             verbose=False
         )
-
+        # 第三步：服务器收集所有客户端模型。
         local_states.append(copy.deepcopy(local_model.state_dict()))
-        local_weights.append(len(train_loader.dataset))
+        local_weights.append(len(train_loader.dataset)) # 权重按样本数设置，样本多的客户端对全局模型影响更大
 
         if verbose:
             train_loss = history["train_loss"][-1]
@@ -78,8 +83,10 @@ def fedavg_round(
                 f"- train_loss: {train_loss:.4f} "
                 f"- train_acc: {train_acc:.4f}"
             )
-
+    # 第四步：服务器进行加权平均。也就是average_state_dicts()函数。
     new_global_state = average_state_dicts(local_states, local_weights)
+    
+    # 第五步：服务器更新全局模型
     global_model.load_state_dict(new_global_state)
 
     return global_model
@@ -112,7 +119,8 @@ def run_fedavg(
 
     for round_idx in range(1, num_rounds + 1):
         print(f"\n=== Federated Round {round_idx}/{num_rounds} ===")
-
+        
+        # 核心流程：
         global_model = fedavg_round(
             global_model=global_model,
             client_loaders=client_loaders,
@@ -122,7 +130,7 @@ def run_fedavg(
             weight_decay=weight_decay,
             verbose=verbose,
         )
-
+        # 第六步：测试模型并评估记录性能。
         test_loss, test_acc = evaluate(global_model, test_loader, device)
         print(f"round {round_idx} - test_loss: {test_loss:.4f} - test_acc: {test_acc:.4f}")
 
