@@ -50,7 +50,7 @@ federal/
 │   ├── utils/                         # 【工具函数模块】
 │   │   ├── __init__.py
 │   │   ├── config.py                  # 配置文件读写
-│   │   └── results_utils.py           # 结果保存与可视化
+│   │   └── results_standard.py           # 结果保存与可视化
 │   │
 │   ├── data/                          # 数据缓存目录
 │   ├── fl/                            # 联邦学习相关模块（预留）
@@ -278,7 +278,7 @@ python -m src.main continual
 
 ---
 
-### 🔟 **src/utils/results_utils.py** - 结果管理与可视化
+### 🔟 **src/utils/results_standard.py** - 结果管理与可视化
 
 **功能**：训练历史保存和曲线绘制
 
@@ -677,7 +677,7 @@ results/
 
 ---
 
-#### [src/utils/results_utils.py](src/utils/results_utils.py) - 结果处理与可视化
+#### [src/utils/results_standard.py](src/utils/results_standard.py) - 结果处理与可视化
 
 | 函数                                                 | 功能描述                             |
 | ---------------------------------------------------- | ------------------------------------ |

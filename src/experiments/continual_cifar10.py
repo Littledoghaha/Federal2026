@@ -22,6 +22,7 @@ import os
 import json
 import random
 import torch
+
 from torch.utils.data import Subset, ConcatDataset
 
 from datasets.data_loader import prepare_continual_dataloaders
@@ -29,7 +30,8 @@ from datasets.data_split import iid_split_indices, build_client_subsets
 from client_dataloader import build_client_loaders
 from model import SimpleCNN
 from train_eval import train_local, evaluate
-from utils.results_utils import save_history_json, save_history_csv
+from utils.results_standard import save_history_json
+from utils.results_continual import save_continual_history_csv, plot_continual_history
 
 
 def set_seed(seed=42):
@@ -134,6 +136,7 @@ def run_continual_learning(config, save_dir):
         "round": [],           # 当前轮次
         "task1_test_acc": [],  # Task 1 测试准确率
         "task2_test_acc": [],  # Task 2 测试准确率
+        "forgetting": [],      # 遗忘指标
     }
 
     # ==========================================================
@@ -161,12 +164,17 @@ def run_continual_learning(config, save_dir):
         # Phase 1 主要看 Task 1 的测试效果
         _, task1_acc = evaluate(model, task1_test_loader, device)
         print(f"Task 1 Test Acc: {task1_acc:.4f}")
-
+        
         history["phase"].append("Task1")
         history["round"].append(round_idx)
         history["task1_test_acc"].append(task1_acc)
         history["task2_test_acc"].append(None)
+        history["forgetting"].append(None)
 
+    # Phase 1 结束后记录参考准确率
+    task1_reference_acc = max(history["task1_test_acc"])
+    print(f"\nTask 1 reference acc for forgetting: {task1_reference_acc:.4f}")
+    
     # ==========================================================
     # Phase 1 结束后：构造经验重放数据
     # ==========================================================
@@ -243,22 +251,27 @@ def run_continual_learning(config, save_dir):
         # Phase 2 需要同时评估两个任务：
         # - Task 1: 看旧任务是否遗忘
         # - Task 2: 看新任务学得怎么样
-        _, task1_acc = evaluate(model, task1_test_loader, device)
+        _, task1_in_task2_acc = evaluate(model, task1_test_loader, device)
         _, task2_acc = evaluate(model, task2_test_loader, device)
 
-        print(f"Task 1 Test Acc: {task1_acc:.4f} (old task / forgetting indicator)")
+        print(f"Task 1 Test Acc: {task1_in_task2_acc:.4f} (old task / forgetting indicator)")
         print(f"Task 2 Test Acc: {task2_acc:.4f} (new task)")
 
+        forgetting = task1_reference_acc - task1_in_task2_acc
         history["phase"].append("Task2")
         history["round"].append(round_idx)
-        history["task1_test_acc"].append(task1_acc)
+        history["task1_test_acc"].append(task1_in_task2_acc)
         history["task2_test_acc"].append(task2_acc)
+        history["forgetting"].append(forgetting)
+        print(f"Forgetting (Task 1 reference acc - Task 1 in Task 2 acc): {forgetting:.4f}")
+
 
     # =========================
     # 5. 保存结果
     # =========================
     save_history_json(history, os.path.join(save_dir, "continual_history.json"))
-    save_history_csv(history, os.path.join(save_dir, "continual_history.csv"))
+    save_continual_history_csv(history, os.path.join(save_dir, "continual_history.csv"))
+    plot_continual_history(history, save_dir, experiment_name="continual_cifar10")
     torch.save(model.state_dict(), os.path.join(save_dir, "continual_model.pth"))
 
     # 额外保存一个 summary，便于后续看最终结果
@@ -269,6 +282,7 @@ def run_continual_learning(config, save_dir):
         "replay_fraction": replay_fraction,
         "final_task1_test_acc": history["task1_test_acc"][-1],
         "final_task2_test_acc": history["task2_test_acc"][-1],
+        "final_forgetting": history["forgetting"][-1],
     }
 
     with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:

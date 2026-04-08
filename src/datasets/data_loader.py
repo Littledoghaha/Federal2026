@@ -130,12 +130,33 @@ def prepare_continual_dataloaders(dataset="cifar10", batch_size=64, test_batch_s
         ]
     
     def filter_by_classes(dataset, classes):
-        """筛选指定类别的样本"""
+        """
+        从数据集中筛选指定类别的样本，并返回一个新的 Subset。
+
+        注意：
+        - 如果 dataset 本身就是 Subset，那么返回的索引必须是“相对当前 Subset 的索引”
+        - 不能直接使用原始大数据集的绝对索引，否则会导致索引越界
+        """
         indices = []
-        labels = np.array(dataset.dataset.targets) if isinstance(dataset, Subset) else np.array(dataset.targets)
-        for idx, label in enumerate(labels):
-            if label in classes:
-                indices.append(idx)
+
+        if isinstance(dataset, Subset):
+            # dataset 是某个原始数据集的子集
+            # dataset.indices 是当前子集映射到原始数据集的索引列表
+            base_targets = np.array(dataset.dataset.targets)
+
+            # new_idx：当前 subset 内部的相对索引
+            # original_idx：原始大数据集中的绝对索引
+            for new_idx, original_idx in enumerate(dataset.indices):
+                label = base_targets[original_idx]
+                if label in classes:
+                    indices.append(new_idx)
+        else:
+            # dataset 不是 Subset，直接遍历它自己的 targets
+            labels = np.array(dataset.targets)
+            for idx, label in enumerate(labels):
+                if label in classes:
+                    indices.append(idx)
+
         return Subset(dataset, indices)
     
     tasks = {}
