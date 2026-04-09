@@ -16,6 +16,30 @@ import matplotlib.pyplot as plt
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
+def _build_sparse_xticks(labels, max_ticks=12):
+    """
+    稀疏显示横坐标，避免标签挤在一起。
+    max_ticks: 最多显示多少个横坐标标签
+    返回:
+        tick_positions: matplotlib 用的横坐标位置
+        tick_labels:    对应显示的标签文本
+    """
+    n = len(labels)
+    if n <= max_ticks:
+        # 点数不多就全显示
+        return list(range(1, n + 1)), labels
+
+    # 自动计算步长，比如 200 个点、最多显示 12 个标签，则每隔 17 个左右显示一次
+    step = math.ceil(n / max_ticks)
+    tick_positions = list(range(1, n + 1, step))
+    tick_labels = [labels[i - 1] for i in tick_positions]
+
+    # 保证最后一个点也显示出来
+    if tick_positions[-1] != n:
+        tick_positions.append(n)
+        tick_labels.append(labels[-1])
+
+    return tick_positions, tick_labels
 
 def save_continual_history_csv(history, save_path):
     """
@@ -59,6 +83,8 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     ensure_dir(save_dir)
     x = list(range(1, len(history["round"]) + 1))
     labels = [f'{p}-{r}' for p, r in zip(history["phase"], history["round"])]
+    # 自动稀疏显示横坐标，避免过密
+    tick_positions, tick_labels = _build_sparse_xticks(labels, max_ticks=12)
     task1_accs = history["task1_test_acc"]
     task2_accs = history["task2_test_acc"]
     forgetting_list = history["forgetting"]
@@ -72,7 +98,8 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     plt.xlabel("Training Stage")
     plt.ylabel("Accuracy")
     plt.title(f"{experiment_name} - Accuracy")
-    plt.xticks(x, labels, rotation=45)
+    # plt.xticks(x, labels, rotation=45)
+    plt.xticks(tick_positions, tick_labels, rotation=45)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -84,7 +111,8 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     plt.xlabel("Training Stage")
     plt.ylabel("Forgetting")
     plt.title(f"{experiment_name} - Forgetting")
-    plt.xticks(x, labels, rotation=45)
+    # plt.xticks(x, labels, rotation=45)
+    plt.xticks(tick_positions, tick_labels, rotation=45)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -104,6 +132,7 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
 
     x = list(range(1, len(history_no_replay["round"]) + 1))
     labels = [f'{p}-{r}' for p, r in zip(history_no_replay["phase"], history_no_replay["round"])]
+    tick_positions, tick_labels = _build_sparse_xticks(labels, max_ticks=12)
 
     no_task1 = history_no_replay["task1_test_acc"]
     no_task2 = [acc if acc is not None else math.nan for acc in history_no_replay["task2_test_acc"]]
@@ -122,7 +151,8 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
     plt.xlabel("Training Stage")
     plt.ylabel("Accuracy")
     plt.title(f"{experiment_name} - Accuracy Comparison")
-    plt.xticks(x, labels, rotation=45)
+    # plt.xticks(x, labels, rotation=45)
+    plt.xticks(tick_positions, tick_labels, rotation=45)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
@@ -136,7 +166,8 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
     plt.xlabel("Training Stage")
     plt.ylabel("Forgetting")
     plt.title(f"{experiment_name} - Forgetting Comparison")
-    plt.xticks(x, labels, rotation=45)
+    # plt.xticks(x, labels, rotation=45)
+    plt.xticks(tick_positions, tick_labels, rotation=45)
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
