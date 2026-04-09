@@ -14,8 +14,10 @@ def run_continual_learning(
     model,
     task1_client_datasets,
     task1_train_indices,
+    task1_val_loader, # *
     task1_test_loader,
     task2_client_datasets,
+    task2_val_loader, # *
     task2_test_loader,
     config,
     save_dir
@@ -78,7 +80,9 @@ def run_continual_learning(
     history = {
         "phase": [],
         "round": [],
+        "task1_val_acc": [], # *
         "task1_test_acc": [],
+        "task2_val_acc": [], # *
         "task2_test_acc": [],
         "forgetting": [],
     }
@@ -101,14 +105,22 @@ def run_continual_learning(
                 verbose=False,
             )
         # 评估 Task 1 的测试准确率
-        _, task1_acc = evaluate(model, task1_test_loader, device)
-        print(f"Task 1 Test Acc: {task1_acc:.4f}")
+        # _, task1_acc = evaluate(model, task1_test_loader, device)
+        # print(f"Task 1 Test Acc: {task1_acc:.4f}")
+        _, task1_val_acc = evaluate(model, task1_val_loader, device)  # *
+        _, task1_test_acc = evaluate(model, task1_test_loader, device)  # *
+        print(f"Task 1 Val  Acc: {task1_val_acc:.4f}")  # *
+        print(f"Task 1 Test Acc: {task1_test_acc:.4f}")  # *
 
         # 记录指标
         history["phase"].append("Task1")
         history["round"].append(round_idx)
-        history["task1_test_acc"].append(task1_acc)
-        history["task2_test_acc"].append(None)  # Task2尚未训练
+        # history["task1_test_acc"].append(task1_acc)
+        # history["task2_test_acc"].append(None)  # Task2尚未训练
+        history["task1_val_acc"].append(task1_val_acc)  # *
+        history["task1_test_acc"].append(task1_test_acc) # *
+        history["task2_val_acc"].append(None)  # *
+        history["task2_test_acc"].append(None)  # *
         history["forgetting"].append(None)  # 遗忘此时无意义
 
     # Phase 1 结束后记录 Task 1 最高准确率作为参考，计算遗忘用
@@ -209,15 +221,21 @@ def run_continual_learning(
 
         # 每个round结束时同时评估两个任务准确率
         _, task1_in_task2_acc = evaluate(model, task1_test_loader, device)
+        _, task1_val_in_task2_acc = evaluate(model, task1_val_loader, device) # *
         _, task2_acc = evaluate(model, task2_test_loader, device)
+        _, task2_val_acc = evaluate(model, task2_val_loader, device) # *
 
+        print(f"Task 1 Val  Acc: {task1_val_in_task2_acc:.4f} (old task)") # *
         print(f"Task 1 Test Acc: {task1_in_task2_acc:.4f} (old task / forgetting indicator)")
+        print(f"Task 2 Val  Acc: {task2_val_acc:.4f} (new task)") # *
         print(f"Task 2 Test Acc: {task2_acc:.4f} (new task)")
 
         forgetting = task1_reference_acc - task1_in_task2_acc
         history["phase"].append("Task2")
         history["round"].append(round_idx)
+        history["task1_val_acc"].append(task1_val_in_task2_acc)  # *
         history["task1_test_acc"].append(task1_in_task2_acc)
+        history["task2_val_acc"].append(task2_val_acc)  # *
         history["task2_test_acc"].append(task2_acc)
         history["forgetting"].append(forgetting)
         print(f"Forgetting (Task 1 reference acc - Task 1 in Task 2 acc): {forgetting:.4f}")

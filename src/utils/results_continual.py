@@ -56,22 +56,33 @@ def save_continual_history_csv(history, save_path):
     ensure_dir(os.path.dirname(save_path))
     phases = history["phase"]
     rounds = history["round"]
-    task1_accs = history["task1_test_acc"]
-    task2_accs = history["task2_test_acc"]
+    task1_val_accs = history["task1_val_acc"] # *
+    task1_test_accs = history["task1_test_acc"]
+    task2_val_accs = history["task2_val_acc"] # *
+    task2_test_accs = history["task2_test_acc"]
     forgetting_list = history["forgetting"]
     with open(save_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([
             "phase",
             "round",
+            "task1_val_acc", # *
             "task1_test_acc",
+            "task2_val_acc", # *
             "task2_test_acc",
             "forgetting"
         ])
-        for phase, r, acc1, acc2, fg in zip(
-            phases, rounds, task1_accs, task2_accs, forgetting_list
+        # for phase, r, acc1, acc2, fg in zip(
+        #     phases, rounds, task1_accs, task2_accs, forgetting_list
+        # ):
+        #     writer.writerow([phase, r, acc1, acc2, fg])
+        for phase, r, t1val, t1test, t2val, t2test, fg in zip(
+            phases, rounds,
+            task1_val_accs, task1_test_accs,
+            task2_val_accs, task2_test_accs,
+            forgetting_list
         ):
-            writer.writerow([phase, r, acc1, acc2, fg])
+            writer.writerow([phase, r, t1val, t1test, t2val, t2test, fg])
 
 
 def plot_continual_history(history, save_dir, experiment_name="continual_cifar10"):
@@ -106,18 +117,40 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     plt.savefig(os.path.join(save_dir, f"{experiment_name}_acc.png"))
     plt.close()
     # 2. forgetting 曲线
-    plt.figure(figsize=(8, 4))
-    plt.plot(x, forgetting_plot, marker="^", color="red", label="Forgetting")
-    plt.xlabel("Training Stage")
-    plt.ylabel("Forgetting")
-    plt.title(f"{experiment_name} - Forgetting")
-    # plt.xticks(x, labels, rotation=45)
-    plt.xticks(tick_positions, tick_labels, rotation=45)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting.png"))
-    plt.close()
+    # plt.figure(figsize=(8, 4))
+    # plt.plot(x, forgetting_plot, marker="^", color="red", label="Forgetting")
+    # plt.xlabel("Training Stage")
+    # plt.ylabel("Forgetting")
+    # plt.title(f"{experiment_name} - Forgetting")
+    # # plt.xticks(x, labels, rotation=45)
+    # plt.xticks(tick_positions, tick_labels, rotation=45)
+    # plt.grid(True)
+    # plt.legend()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting.png"))
+    # plt.close()
+    # 只绘制 Task2 阶段的 forgetting，避免左半边全是空白
+    task2_indices = [i for i, p in enumerate(history["phase"]) if p == "Task2"]
+    if len(task2_indices) > 0:
+        x_fg = [i + 1 for i in task2_indices]
+        fg_labels = [labels[i] for i in task2_indices]
+        fg_values = [forgetting_list[i] for i in task2_indices]
+        fg_plot = [fg if fg is not None else math.nan for fg in fg_values]
+        fg_tick_positions, fg_tick_labels = _build_sparse_xticks(fg_labels, max_ticks=12)
+        # 注意：_build_sparse_xticks 返回的是从 1 开始的相对位置，
+        # 这里需要映射回真正的 x 轴位置
+        fg_tick_positions = [x_fg[i - 1] for i in fg_tick_positions]
+        plt.figure(figsize=(8, 4))
+        plt.plot(x_fg, fg_plot, marker="^", color="red", label="Forgetting")
+        plt.xlabel("Training Stage")
+        plt.ylabel("Forgetting")
+        plt.title(f"{experiment_name} - Forgetting")
+        plt.xticks(fg_tick_positions, fg_tick_labels, rotation=45)
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting.png"))
+        plt.close()
 
 def plot_continual_comparison(history_no_replay, history_replay, save_dir,
                               experiment_name="continual_cifar10_comparison"):
@@ -160,16 +193,44 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
     plt.close()
 
     # 2. Forgetting comparison
-    plt.figure(figsize=(9, 5))
-    plt.plot(x, no_forgetting, marker="^", color="red", label="Forgetting (No Replay)")
-    plt.plot(x, re_forgetting, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
-    plt.xlabel("Training Stage")
-    plt.ylabel("Forgetting")
-    plt.title(f"{experiment_name} - Forgetting Comparison")
-    # plt.xticks(x, labels, rotation=45)
-    plt.xticks(tick_positions, tick_labels, rotation=45)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting_comparison.png"))
-    plt.close()
+    # plt.figure(figsize=(9, 5))
+    # plt.plot(x, no_forgetting, marker="^", color="red", label="Forgetting (No Replay)")
+    # plt.plot(x, re_forgetting, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
+    # plt.xlabel("Training Stage")
+    # plt.ylabel("Forgetting")
+    # plt.title(f"{experiment_name} - Forgetting Comparison")
+    # # plt.xticks(x, labels, rotation=45)
+    # plt.xticks(tick_positions, tick_labels, rotation=45)
+    # plt.grid(True)
+    # plt.legend()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting_comparison.png"))
+    # plt.close()
+    # 只画 Task2 阶段的 forgetting，对比图更干净
+    task2_indices = [i for i, p in enumerate(history_no_replay["phase"]) if p == "Task2"]
+
+    if len(task2_indices) > 0:
+        x_fg = [i + 1 for i in task2_indices]
+        fg_labels = [labels[i] for i in task2_indices]
+
+        no_fg = [history_no_replay["forgetting"][i] for i in task2_indices]
+        re_fg = [history_replay["forgetting"][i] for i in task2_indices]
+
+        no_fg_plot = [fg if fg is not None else math.nan for fg in no_fg]
+        re_fg_plot = [fg if fg is not None else math.nan for fg in re_fg]
+
+        fg_tick_positions, fg_tick_labels = _build_sparse_xticks(fg_labels, max_ticks=12)
+        fg_tick_positions = [x_fg[i - 1] for i in fg_tick_positions]
+
+        plt.figure(figsize=(9, 5))
+        plt.plot(x_fg, no_fg_plot, marker="^", color="red", label="Forgetting (No Replay)")
+        plt.plot(x_fg, re_fg_plot, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
+        plt.xlabel("Training Stage")
+        plt.ylabel("Forgetting")
+        plt.title(f"{experiment_name} - Forgetting Comparison")
+        plt.xticks(fg_tick_positions, fg_tick_labels, rotation=45)
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting_comparison.png"))
+        plt.close()

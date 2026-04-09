@@ -69,8 +69,10 @@ def run_continual(config, save_dir):
     )
     task2_client_datasets = build_client_subsets(task2_data["train_dataset"], task2_train_indices)
 
-    # 测试集加载器
+    # 验证集 / 测试集加载器 *
+    task1_val_loader = task1_data["val_loader"]
     task1_test_loader = task1_data["test_loader"]
+    task2_val_loader = task2_data["val_loader"]
     task2_test_loader = task2_data["test_loader"]
 
     # 初始化模型
@@ -82,8 +84,10 @@ def run_continual(config, save_dir):
         model=model,
         task1_client_datasets=task1_client_datasets,
         task1_train_indices=task1_train_indices,
+        task1_val_loader=task1_val_loader, # *
         task1_test_loader=task1_test_loader,
         task2_client_datasets=task2_client_datasets,
+        task2_val_loader=task2_val_loader, # *
         task2_test_loader=task2_test_loader,
         config=config,
         save_dir=save_dir,
