@@ -95,27 +95,49 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     x = list(range(1, len(history["round"]) + 1))
     labels = [f'{p}-{r}' for p, r in zip(history["phase"], history["round"])]
     # 自动稀疏显示横坐标，避免过密
-    tick_positions, tick_labels = _build_sparse_xticks(labels, max_ticks=12)
-    task1_accs = history["task1_test_acc"]
-    task2_accs = history["task2_test_acc"]
+    tick_positions, tick_labels = _build_sparse_xticks(labels, max_ticks=12) 
+    # 读取精度曲线
+    task1_val_accs = history["task1_val_acc"] # *
+    task1_test_accs = history["task1_test_acc"]
+    task2_val_accs = history["task2_val_acc"] # *
+    task2_test_accs = history["task2_test_acc"]
     forgetting_list = history["forgetting"]
     # None 转 nan，方便 matplotlib 跳过不画
-    task2_plot = [acc if acc is not None else math.nan for acc in task2_accs]
+    task1_val_plot = [acc if acc is not None else math.nan for acc in task1_val_accs]
+    task1_test_plot = [acc if acc is not None else math.nan for acc in task1_test_accs]
+    task2_val_plot = [acc if acc is not None else math.nan for acc in task2_val_accs]
+    task2_test_plot = [acc if acc is not None else math.nan for acc in task2_test_accs]
+    # task2_plot = [acc if acc is not None else math.nan for acc in task2_test_accs]
     forgetting_plot = [fg if fg is not None else math.nan for fg in forgetting_list]
-    # 1. 准确率曲线
-    plt.figure(figsize=(8, 4))
-    plt.plot(x, task1_accs, marker="o", label="Task 1 Test Acc")
-    plt.plot(x, task2_plot, marker="s", label="Task 2 Test Acc")
+    # 1. val / test accuracy 曲线（单实验一张图，共4条线）
+    plt.figure(figsize=(10, 5))
+    plt.plot(x, task1_val_plot, marker="o", markersize=3, linewidth=1.5, label="Task1 Val Acc")
+    plt.plot(x, task1_test_plot, marker="o", markersize=3, linewidth=1.5, linestyle="--", label="Task1 Test Acc")
+    plt.plot(x, task2_val_plot, marker="s", markersize=3, linewidth=1.5, label="Task2 Val Acc")
+    plt.plot(x, task2_test_plot, marker="s", markersize=3, linewidth=1.5, linestyle="--", label="Task2 Test Acc")
     plt.xlabel("Training Stage")
     plt.ylabel("Accuracy")
-    plt.title(f"{experiment_name} - Accuracy")
-    # plt.xticks(x, labels, rotation=45)
+    plt.title(f"{experiment_name} - Val/Test Accuracy")
     plt.xticks(tick_positions, tick_labels, rotation=45)
-    plt.grid(True)
+    plt.grid(True, linestyle="--", alpha=0.5)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{experiment_name}_acc.png"))
+    plt.savefig(os.path.join(save_dir, f"{experiment_name}_val_test_acc.png"))
     plt.close()
+    # 1. 准确率曲线
+    # plt.figure(figsize=(8, 4))
+    # plt.plot(x, task1_test_accs, marker="o", label="Task 1 Test Acc")
+    # plt.plot(x, task2_plot, marker="s", label="Task 2 Test Acc")
+    # plt.xlabel("Training Stage")
+    # plt.ylabel("Accuracy")
+    # plt.title(f"{experiment_name} - Accuracy")
+    # # plt.xticks(x, labels, rotation=45)
+    # plt.xticks(tick_positions, tick_labels, rotation=45)
+    # plt.grid(True)
+    # plt.legend()
+    # plt.tight_layout()
+    # plt.savefig(os.path.join(save_dir, f"{experiment_name}_acc.png"))
+    # plt.close()
     # 2. forgetting 曲线
     # plt.figure(figsize=(8, 4))
     # plt.plot(x, forgetting_plot, marker="^", color="red", label="Forgetting")
