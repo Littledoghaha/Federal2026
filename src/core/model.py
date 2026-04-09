@@ -246,13 +246,13 @@ class SimpleCNN(nn.Module):
 
     def __init__(self, args=None, num_classes=10, in_channels=3):
         super().__init__()
-        # if args is None:
-        #     from types import SimpleNamespace
-        #     args = SimpleNamespace(
-        #         lambda_l1=1e-4,
-        #         lambda_mask=1e-4,
-        #         device="cuda" if torch.cuda.is_available() else "cpu"
-        #     )
+        if args is None:
+            from types import SimpleNamespace
+            args = SimpleNamespace(
+                lambda_l1=1e-4,
+                lambda_mask=1e-4,
+                device="cuda" if torch.cuda.is_available() else "cpu"
+            )
         self.args = args
         self.num_classes = num_classes
         self.in_channels = in_channels

@@ -6,12 +6,20 @@ CIFAR-10 版本持续学习调用脚本
 - 初始化模型
 - 调用 core.continual.run_continual_learning
 
-保证函数名、打印内容和行为与原先代码一致。
+本版本已改为：
+- 支持任意 task 数
+- task 划分由 config["task_classes"] 控制
+- 例如：
+    2 task: [[0,1,2,3,4], [5,6,7,8,9]]
+    3 task: [[0,1,2], [3,4,5], [6,7,8,9]]
+
+保证函数名、打印内容和行为与原先代码尽量一致。
 """
 
 import torch
-import os
 import random
+from types import SimpleNamespace
+
 from datasets.data_loader import prepare_continual_dataloaders
 from datasets.data_split import iid_split_indices, build_client_subsets
 from core.continual import run_continual_learning
@@ -21,6 +29,10 @@ from core.model import SimpleCNN
 def run_continual(config, save_dir):
     """
     CIFAR-10 持续学习调用函数。
+
+    说明：
+    - 这里只负责“数据准备 + 模型初始化 + 调用核心算法”
+    - 真正的持续学习训练流程放在 core/continual.py 中
     """
 
     def set_seed(seed=42):
@@ -31,14 +43,30 @@ def run_continual(config, save_dir):
     device = torch.device(config["device"] if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
-    from types import SimpleNamespace
+    # 模型中分解参数层所需的超参数
     model_args = SimpleNamespace(
         lambda_l1=config.get("lambda_l1", 1e-4),
         lambda_mask=config.get("lambda_mask", 1e-4),
         device=device,
     )
 
-    # 准备两个任务的数据集，task0是类别0-4，task1是类别5-9
+    # =========================
+    # 从配置中读取任务划分
+    # 如果 config 中没有 task_classes，就默认使用 2 task 划分
+    # =========================
+    task_classes = config.get(
+        "task_classes",
+        [[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]]
+    )
+    num_tasks = len(task_classes)
+
+    # =========================
+    # 准备持续学习任务数据
+    # 每个 task 都会包含：
+    # - train_dataset
+    # - val_loader
+    # - test_loader
+    # =========================
     task_data = prepare_continual_dataloaders(
         dataset="cifar10",
         batch_size=config["train_batch_size"],
@@ -46,50 +74,62 @@ def run_continual(config, save_dir):
         seed=config["seed"],
         num_workers=0,
         val_ratio=0.1,
-        num_tasks=2,
-        task_classes=[[0, 1, 2, 3, 4], [5, 6, 7, 8, 9]],
+        num_tasks=num_tasks,
+        task_classes=task_classes,
     )
-
-    task1_data = task_data["task0"]  # 旧任务 Task 1（类别 0-4）
-    task2_data = task_data["task1"]  # 新任务 Task 2（类别 5-9）
 
     print("\nTask split summary:")
-    # 打印训练样本数量，方便核实
-    print(f"Task 1 (classes 0-4): {len(task1_data['train_dataset'])} train samples")
-    print(f"Task 2 (classes 5-9): {len(task2_data['train_dataset'])} train samples")
 
-    # 将每个任务训练集进一步划分给多个客户端，保持和联邦学习类似的结构
-    task1_train_indices = iid_split_indices(
-        task1_data["train_dataset"], num_clients=config["num_clients"], seed=config["seed"]
-    )
-    task1_client_datasets = build_client_subsets(task1_data["train_dataset"], task1_train_indices)
+    # 用一个列表统一保存所有任务，后续直接传给 core 层
+    all_tasks = []
 
-    task2_train_indices = iid_split_indices(
-        task2_data["train_dataset"], num_clients=config["num_clients"], seed=config["seed"]
-    )
-    task2_client_datasets = build_client_subsets(task2_data["train_dataset"], task2_train_indices)
+    # =========================
+    # 遍历每一个任务：
+    # 1. 打印任务样本数
+    # 2. 把任务训练集再划分给多个客户端
+    # 3. 组织成统一结构，交给 run_continual_learning
+    # =========================
+    for task_id in range(num_tasks):
+        task_key = f"task{task_id}"
+        one_task = task_data[task_key]
 
-    # 验证集 / 测试集加载器 *
-    task1_val_loader = task1_data["val_loader"]
-    task1_test_loader = task1_data["test_loader"]
-    task2_val_loader = task2_data["val_loader"]
-    task2_test_loader = task2_data["test_loader"]
+        print(
+            f"Task {task_id + 1} (classes {task_classes[task_id]}): "
+            f"{len(one_task['train_dataset'])} train samples"
+        )
+
+        # 将当前任务训练集进一步划分给多个客户端
+        # 保持和联邦学习类似的结构，便于后续实验对比
+        train_indices = iid_split_indices(
+            one_task["train_dataset"],
+            num_clients=config["num_clients"],
+            seed=config["seed"]
+        )
+        client_datasets = build_client_subsets(
+            one_task["train_dataset"],
+            train_indices
+        )
+
+        all_tasks.append({
+            "task_id": task_id,
+            "classes": task_classes[task_id],
+            "train_dataset": one_task["train_dataset"],
+            "val_loader": one_task["val_loader"],
+            "test_loader": one_task["test_loader"],
+            "train_indices": train_indices,
+            "client_datasets": client_datasets,
+        })
 
     # 初始化模型
-    # 注意模型输出类别数仍是10，因为标签未变，只是训练数据分成了两个阶段
+    # 注意模型输出类别数仍是10，因为标签未变，只是训练数据分成多个阶段
     model = SimpleCNN(args=model_args, num_classes=10, in_channels=3)
 
     # 调用核心算法
     history, summary = run_continual_learning(
         model=model,
-        task1_client_datasets=task1_client_datasets,
-        task1_train_indices=task1_train_indices,
-        task1_val_loader=task1_val_loader, # *
-        task1_test_loader=task1_test_loader,
-        task2_client_datasets=task2_client_datasets,
-        task2_val_loader=task2_val_loader, # *
-        task2_test_loader=task2_test_loader,
+        tasks=all_tasks,
         config=config,
         save_dir=save_dir,
     )
+
     return history, summary

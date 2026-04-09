@@ -1,48 +1,54 @@
+"""
+持续学习核心算法模块
+
+本版本已从“固定 2 个任务”改为“支持任意 task 数”的通用版本。
+
+主要思想：
+1. 按任务顺序依次训练：Task1 -> Task2 -> Task3 -> ...
+2. 第一个任务正常训练
+3. 后续任务若开启 replay，则从所有旧任务中抽取一部分样本进行经验重放
+4. 每轮训练后评估当前已见过的所有任务
+5. 遗忘指标采用“旧任务平均遗忘”：
+   forgetting = mean(reference_acc_i - current_acc_i), i 属于所有旧任务
+"""
+
 import os
 import json
 import random
-import copy
 import torch
 from torch.utils.data import Subset, ConcatDataset
 
 from core.train_eval import train_local, evaluate
+from datasets.client_dataloader import build_client_loaders
 from utils.results_standard import save_history_json
 from utils.results_continual import save_continual_history_csv, plot_continual_history
 
 
-def run_continual_learning(
-    model,
-    task1_client_datasets,
-    task1_train_indices,
-    task1_val_loader, # *
-    task1_test_loader,
-    task2_client_datasets,
-    task2_val_loader, # *
-    task2_test_loader,
-    config,
-    save_dir
-):
+def run_continual_learning(model, tasks, config, save_dir):
     """
-    持续学习主流程（核心算法）
+    持续学习主流程（核心算法，通用 task 数版本）
 
     参数说明：
     - model: 已初始化的模型实例，对所有客户端共享
-    - task1_client_datasets: Task 1 训练数据按客户端划分的字典或列表
-    - task1_train_indices: Task 1 每客户端的训练样本索引，方便经验重放采样
-    - task1_test_loader: Task 1 测试集 DataLoader
-    - task2_client_datasets: Task 2 训练数据按客户端划分的字典或列表
-    - task2_test_loader: Task 2 测试集 DataLoader
+    - tasks: 所有任务的信息列表，每个元素格式为：
+        {
+            "task_id": ...,
+            "classes": ...,
+            "train_dataset": ...,
+            "val_loader": ...,
+            "test_loader": ...,
+            "train_indices": ...,
+            "client_datasets": ...
+        }
     - config: 实验配置，包含超参数等
     - save_dir: 结果保存目录
 
     实验流程：
-    1. Phase 1：训练 Task 1（旧任务）
-    2. 构造经验重放数据（如开启），从 Task 1 数据中抽取部分样本
-    3. Phase 2：训练 Task 2（新任务），混合经验重放数据缓解灾难性遗忘
-    4. 训练过程中评估 Task 1 和 Task 2 准确率，计算遗忘指标
+    1. 按任务顺序依次训练
+    2. 第一个任务单独训练
+    3. 从第二个任务开始，可加入 replay
+    4. 每个 round 结束后评估所有已学习任务
     5. 保存训练历史和模型
-
-    本函数与具体数据集无关，便于多数据集兼容使用。
     """
 
     def set_seed(seed=42):
@@ -58,207 +64,239 @@ def run_continual_learning(
 
     # 是否启用经验重放策略，控制新任务学习时加入旧任务样本
     use_replay = config.get("use_replay", True)
-    # 经验重放样本比例，默认从 Task 1 训练集中抽取20%
+    # 经验重放样本比例，默认从旧任务训练集中抽取 20%
     replay_fraction = config.get("replay_fraction", 0.2)
 
-    # 构造每个客户端的DataLoader，统一batch size
-    from datasets.client_dataloader import build_client_loaders
+    num_tasks = len(tasks)
 
-    # Task 1 每客户端训练loader
-    task1_client_loaders = build_client_loaders(
-        task1_client_datasets, batch_size=config["train_batch_size"]
-    )
-
-    # 经验重放数据暂时为空
-    task2_client_mixed_datasets = None
-
-    print("\n" + "=" * 60)
-    print("Phase 1: Training on Task 1 (Classes of old task)")
-    print("=" * 60)
-
-    # 记录训练过程指标
+    # =========================
+    # 用于记录训练过程指标
+    # 注意：这里改为动态生成 task1/task2/task3/... 的指标字段
+    # =========================
     history = {
         "phase": [],
         "round": [],
-        "task1_val_acc": [], # *
-        "task1_test_acc": [],
-        "task2_val_acc": [], # *
-        "task2_test_acc": [],
         "forgetting": [],
     }
 
-    # =========================
-    # Phase 1: 先训练旧任务 Task 1
-    # =========================
-    for round_idx in range(1, config["num_rounds"] + 1):
-        print(f"\n--- Round {round_idx}/{config['num_rounds']} ---")
+    for task_idx in range(num_tasks):
+        history[f"task{task_idx + 1}_val_acc"] = []
+        history[f"task{task_idx + 1}_test_acc"] = []
 
-        # 依次在每个客户端的 Task 1 数据上训练
-        for client_id, train_loader in task1_client_loaders.items():
-            model, _ = train_local(
-                model=model,
-                train_loader=train_loader,
-                device=device,
-                epochs=config["local_epochs"],
-                lr=config["lr"],
-                weight_decay=config["weight_decay"],
-                verbose=False,
-            )
-        # 评估 Task 1 的测试准确率
-        # _, task1_acc = evaluate(model, task1_test_loader, device)
-        # print(f"Task 1 Test Acc: {task1_acc:.4f}")
-        _, task1_val_acc = evaluate(model, task1_val_loader, device)  # *
-        _, task1_test_acc = evaluate(model, task1_test_loader, device)  # *
-        print(f"Task 1 Val  Acc: {task1_val_acc:.4f}")  # *
-        print(f"Task 1 Test Acc: {task1_test_acc:.4f}")  # *
+    # 记录每个任务在其训练结束时的参考精度，用于后续计算遗忘
+    task_reference_acc = {}
 
-        # 记录指标
-        history["phase"].append("Task1")
+    def append_history(task_phase_name, round_idx, eval_results, forgetting_value):
+        """
+        将当前 round 的评估结果写入 history。
+
+        参数：
+        - task_phase_name: 当前属于哪个任务阶段，例如 "Task1"
+        - round_idx: 当前阶段内的轮次
+        - eval_results: 当前已见任务的评估结果
+        - forgetting_value: 当前遗忘指标
+        """
+        history["phase"].append(task_phase_name)
         history["round"].append(round_idx)
-        # history["task1_test_acc"].append(task1_acc)
-        # history["task2_test_acc"].append(None)  # Task2尚未训练
-        history["task1_val_acc"].append(task1_val_acc)  # *
-        history["task1_test_acc"].append(task1_test_acc) # *
-        history["task2_val_acc"].append(None)  # *
-        history["task2_test_acc"].append(None)  # *
-        history["forgetting"].append(None)  # 遗忘此时无意义
+        history["forgetting"].append(forgetting_value)
 
-    # Phase 1 结束后记录 Task 1 最高准确率作为参考，计算遗忘用
-    task1_reference_acc = max(history["task1_test_acc"])
-    print(f"\nTask 1 reference acc for forgetting: {task1_reference_acc:.4f}")
+        # 对所有任务统一补齐记录：
+        # 已评估到的任务写真实值，尚未出现的任务写 None
+        for eval_task_idx in range(num_tasks):
+            val_key = f"task{eval_task_idx + 1}_val_acc"
+            test_key = f"task{eval_task_idx + 1}_test_acc"
 
-    # =========================
-    # Phase 2 开始前，构造经验重放数据
-    # =========================
-    if use_replay:
-        print(f"\n经验重放开启")
-
-        # 汇总所有客户端 Task 1 的训练索引，方便全局采样
-        all_task1_indices = []
-        for indices in task1_train_indices.values():
-            all_task1_indices.extend(indices)
-
-        replay_size = max(int(len(all_task1_indices) * replay_fraction), 1)  # 避免为0
-        # 从 Task 1 训练索引中随机采样
-        replay_indices = random.sample(all_task1_indices, replay_size)
-
-        # 这里需要从客户端集合中找到底层完整的 Task 1 训练集，构造重放Subset
-        all_task1_dataset = None
-        for ds in task1_client_datasets.values():
-            if isinstance(ds, torch.utils.data.Subset):
-                all_task1_dataset = ds.dataset
+            if eval_task_idx in eval_results:
+                history[val_key].append(eval_results[eval_task_idx]["val_acc"])
+                history[test_key].append(eval_results[eval_task_idx]["test_acc"])
             else:
-                all_task1_dataset = ds
-            break
+                history[val_key].append(None)
+                history[test_key].append(None)
 
-        task1_replay_dataset = Subset(all_task1_dataset, replay_indices)
+    def evaluate_seen_tasks(model, tasks, seen_task_ids, device):
+        """
+        评估当前模型在所有“已见任务”上的 val/test 表现。
+        返回：
+            {
+                0: {"val_acc": ..., "test_acc": ...},
+                1: {"val_acc": ..., "test_acc": ...},
+                ...
+            }
+        """
+        results = {}
+        for tid in seen_task_ids:
+            _, val_acc = evaluate(model, tasks[tid]["val_loader"], device)
+            _, test_acc = evaluate(model, tasks[tid]["test_loader"], device)
+            results[tid] = {
+                "val_acc": val_acc,
+                "test_acc": test_acc,
+            }
+        return results
 
-        print(f"Replay memory size: {len(task1_replay_dataset)} samples")
+    def build_replay_dataset_from_previous_tasks(previous_tasks, replay_fraction, seed):
+        """
+        从所有旧任务中抽样，构造 replay 数据集。
+
+        做法：
+        - 对每个旧任务，按照 replay_fraction 抽一部分训练样本
+        - 再将这些旧任务 replay subset 合并起来
+
+        返回：
+        - 如果只有一个旧任务，直接返回该 Subset
+        - 如果有多个旧任务，返回 ConcatDataset
+        """
+        replay_subsets = []
+        random.seed(seed)
+
+        for old_task in previous_tasks:
+            all_indices = []
+            for indices in old_task["train_indices"].values():
+                all_indices.extend(indices)
+
+            replay_size = max(1, int(len(all_indices) * replay_fraction))
+            replay_indices = random.sample(all_indices, replay_size)
+
+            replay_subset = Subset(old_task["train_dataset"], replay_indices)
+            replay_subsets.append(replay_subset)
+
+        if len(replay_subsets) == 1:
+            return replay_subsets[0]
+        return ConcatDataset(replay_subsets)
+
+    # ==========================================================
+    # 按任务顺序训练：Task1 -> Task2 -> Task3 -> ...
+    # ==========================================================
+    for task_idx, current_task in enumerate(tasks):
+        print("\n" + "=" * 60)
+        print(f"Phase {task_idx + 1}: Training on Task {task_idx + 1} {current_task['classes']}")
+        print("=" * 60)
+
+        current_client_datasets = current_task["client_datasets"]
 
         # =========================
-        # Phase 2：构造混合数据集，Task 2 数据 + Replay 旧任务数据
-        # 这里简单让所有客户端共享同一份 replay 数据
+        # 如果是第一个任务，直接使用当前任务数据训练
+        # 如果不是第一个任务，可选加入 replay
         # =========================
-        task2_client_mixed_datasets = {}
-        for client_id, task2_subset in task2_client_datasets.items():
-            mixed_dataset = ConcatDataset([task2_subset, task1_replay_dataset])
-            task2_client_mixed_datasets[client_id] = mixed_dataset
-    else:
-        print(f"\n经验重放关闭，Phase 2 只用 Task 2 数据训练")
-        task2_client_mixed_datasets = task2_client_datasets
+        if task_idx == 0:
+            mixed_client_datasets = current_client_datasets
+        else:
+            if use_replay:
+                print("\n经验重放开启")
 
-    # 构造 Phase 2 各客户端的混合数据加载器
-    task2_client_loaders = build_client_loaders(
-        task2_client_mixed_datasets, batch_size=config["train_batch_size"]
-    )
+                previous_tasks = tasks[:task_idx]
+                replay_dataset = build_replay_dataset_from_previous_tasks(
+                    previous_tasks=previous_tasks,
+                    replay_fraction=replay_fraction,
+                    seed=config["seed"]
+                )
+                print(f"Replay memory size: {len(replay_dataset)} samples")
 
-    print("\n" + "=" * 60)
-    print("Phase 2: Continual Learning on Task 2 with Replay")
-    print("Observe forgetting on Task 1 while learning Task 2")
-    print("=" * 60)
+                # 将当前任务数据与 replay 数据拼接
+                # 这里采用“所有客户端共享同一份 replay 数据”的简单策略
+                mixed_client_datasets = {}
+                for client_id, current_subset in current_client_datasets.items():
+                    mixed_dataset = ConcatDataset([current_subset, replay_dataset])
+                    mixed_client_datasets[client_id] = mixed_dataset
+            else:
+                print("\n经验重放关闭，仅使用当前任务数据训练")
+                mixed_client_datasets = current_client_datasets
 
-    # 评估 Phase 2 训练开始前 Task 1 精度
-    _, task1_before = evaluate(model, task1_test_loader, device)
-    print(f"\nTask1 acc before Phase2 training: {task1_before:.4f}")
+        # 为当前阶段的客户端构造 DataLoader
+        current_client_loaders = build_client_loaders(
+            mixed_client_datasets,
+            batch_size=config["train_batch_size"]
+        )
 
-    # =========================
-    # Phase 2: 训练新任务 Task 2，监控 Task 1 遗忘情况
-    # =========================
-    for round_idx in range(1, config["num_rounds"] + 1):
-        print(f"\n--- Round {round_idx}/{config['num_rounds']} ---")
+        # =========================
+        # 当前任务阶段的训练轮次
+        # =========================
+        for round_idx in range(1, config["num_rounds"] + 1):
+            print(f"\n--- Round {round_idx}/{config['num_rounds']} ---")
 
-        for client_id, train_loader in task2_client_loaders.items():
-            print(f"\n--- Training on client {client_id} ---")
-            model, _ = train_local(
-                model=model,
-                train_loader=train_loader,
-                device=device,
-                epochs=config["local_epochs"],
-                lr=config["lr"],
-                weight_decay=config["weight_decay"],
-                verbose=False,
+            # 依次在每个客户端的当前任务数据上训练
+            # 注意：这里仍然是“顺序客户端训练”风格
+            # 它不是联邦聚合，而是持续学习实验中为了保持结构一致采用的客户端划分形式
+            for client_id, train_loader in current_client_loaders.items():
+                model, _ = train_local(
+                    model=model,
+                    train_loader=train_loader,
+                    device=device,
+                    epochs=config["local_epochs"],
+                    lr=config["lr"],
+                    weight_decay=config["weight_decay"],
+                    verbose=False,
+                )
+
+            # 评估当前已见过的所有任务
+            seen_task_ids = list(range(task_idx + 1))
+            eval_results = evaluate_seen_tasks(model, tasks, seen_task_ids, device)
+
+            for tid in seen_task_ids:
+                print(
+                    f"Task {tid + 1} Val  Acc: {eval_results[tid]['val_acc']:.4f} | "
+                    f"Test Acc: {eval_results[tid]['test_acc']:.4f}"
+                )
+
+            # =========================
+            # 计算遗忘指标
+            # 第一个任务阶段没有遗忘概念
+            # 从第二个任务开始，对所有旧任务求平均遗忘
+            # =========================
+            if task_idx == 0:
+                forgetting = None
+            else:
+                forgetting_list = []
+                for old_tid in range(task_idx):
+                    ref_acc = task_reference_acc[old_tid]
+                    cur_acc = eval_results[old_tid]["test_acc"]
+                    forgetting_list.append(ref_acc - cur_acc)
+
+                forgetting = sum(forgetting_list) / len(forgetting_list)
+                print(f"Average Forgetting: {forgetting:.4f}")
+
+            # 保存本轮结果
+            append_history(
+                task_phase_name=f"Task{task_idx + 1}",
+                round_idx=round_idx,
+                eval_results=eval_results,
+                forgetting_value=forgetting
             )
 
-            # 调试：打印 Task1 测试集预测前20个结果及标签
-            model.eval()
-            with torch.no_grad():
-                for images, labels in task1_test_loader:
-                    outputs = model(images.to(device))
-                    preds = outputs.argmax(dim=1)
-                    print("Predictions (first 20):", preds[:20].tolist())
-                    print("Labels (first 20):     ", labels[:20].tolist())
-                    break
+        # =========================
+        # 当前任务训练结束后，记录该任务参考精度
+        # 这里采用“该任务训练结束时的 test acc”作为 reference
+        # 后续阶段据此计算该任务被遗忘了多少
+        # =========================
+        final_eval = evaluate_seen_tasks(model, tasks, [task_idx], device)
+        task_reference_acc[task_idx] = final_eval[task_idx]["test_acc"]
+        print(f"\nTask {task_idx + 1} reference acc for forgetting: {task_reference_acc[task_idx]:.4f}")
 
-            # 训练完当前客户端后，立刻评估 Task1 准确率
-            _, acc_after_client = evaluate(model, task1_test_loader, device)
-            print(f"Task1 acc after client {client_id}: {acc_after_client:.4f}")
-
-            # 打印最后一层全连接层权重均值（分任务类别），辅助检查参数变化
-            last_linear = model.fc2
-            weights = last_linear.weight.data
-            print("Weights mean (classes 0-4):", weights[:5].mean().item())
-            print("Weights mean (classes 5-9):", weights[5:].mean().item())
-
-        # 每个round结束时同时评估两个任务准确率
-        _, task1_in_task2_acc = evaluate(model, task1_test_loader, device)
-        _, task1_val_in_task2_acc = evaluate(model, task1_val_loader, device) # *
-        _, task2_acc = evaluate(model, task2_test_loader, device)
-        _, task2_val_acc = evaluate(model, task2_val_loader, device) # *
-
-        print(f"Task 1 Val  Acc: {task1_val_in_task2_acc:.4f} (old task)") # *
-        print(f"Task 1 Test Acc: {task1_in_task2_acc:.4f} (old task / forgetting indicator)")
-        print(f"Task 2 Val  Acc: {task2_val_acc:.4f} (new task)") # *
-        print(f"Task 2 Test Acc: {task2_acc:.4f} (new task)")
-
-        forgetting = task1_reference_acc - task1_in_task2_acc
-        history["phase"].append("Task2")
-        history["round"].append(round_idx)
-        history["task1_val_acc"].append(task1_val_in_task2_acc)  # *
-        history["task1_test_acc"].append(task1_in_task2_acc)
-        history["task2_val_acc"].append(task2_val_acc)  # *
-        history["task2_test_acc"].append(task2_acc)
-        history["forgetting"].append(forgetting)
-        print(f"Forgetting (Task 1 reference acc - Task 1 in Task 2 acc): {forgetting:.4f}")
-
-    # 保存训练记录和模型
+    # =========================
+    # 保存结果
+    # =========================
     save_history_json(history, os.path.join(save_dir, "continual_history.json"))
     save_continual_history_csv(history, os.path.join(save_dir, "continual_history.csv"))
+
     experiment_name = "continual_replay" if use_replay else "continual_no_replay"
     plot_continual_history(history, save_dir, experiment_name=experiment_name)
+
     torch.save(model.state_dict(), os.path.join(save_dir, "continual_model.pth"))
 
-    # 保存 summary，方便后续分析
+    # 额外保存一个 summary，便于后续看最终结果
     summary = {
         "experiment_name": f'{config["dataset"]}_continual',
         "use_replay": use_replay,
+        "num_tasks": num_tasks,
         "num_rounds_per_phase": config["num_rounds"],
         "local_epochs": config["local_epochs"],
         "replay_fraction": replay_fraction if use_replay else 0.0,
-        "task1_reference_acc": task1_reference_acc,
-        "final_task1_test_acc": history["task1_test_acc"][-1],
-        "final_task2_test_acc": history["task2_test_acc"][-1],
+        "task_reference_acc": task_reference_acc,
         "final_forgetting": history["forgetting"][-1],
     }
+
+    # 动态记录每个任务的最终测试精度
+    for task_idx in range(num_tasks):
+        summary[f"final_task{task_idx + 1}_test_acc"] = history[f"task{task_idx + 1}_test_acc"][-1]
 
     with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
