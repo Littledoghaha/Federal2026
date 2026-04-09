@@ -22,7 +22,7 @@
 
 from datasets.cifar_svhn import load_cifar10, load_svhn, load_all_datasets
 from datasets.data_split import iid_split_indices, build_client_subsets
-from client_dataloader import build_client_loaders, build_test_loader, build_train_loader
+from datasets.client_dataloader import build_client_loaders, build_test_loader, build_train_loader
 import numpy as np
 from torch.utils.data import Subset
 
@@ -181,7 +181,125 @@ def prepare_continual_dataloaders(dataset="cifar10", batch_size=64, test_batch_s
     return tasks
 
 
-def prepare_federated_continual_dataloaders(num_clients=3, num_tasks=2, train_batch_size=64, test_batch_size=128, seed=42, num_workers=0, val_ratio=0.1, root="data", task_classes=None):
-    """联邦持续学习"""
-    # TODO: 实现客户端 + 任务序列加载逻辑
-    pass
+def prepare_federated_continual_dataloaders(
+    dataset="cifar10",
+    num_clients=3,
+    num_tasks=2,
+    train_batch_size=64,
+    test_batch_size=128,
+    seed=42,
+    num_workers=0,
+    val_ratio=0.1,
+    root="data",
+    task_classes=None
+):
+    """
+    联邦持续学习的数据准备入口
+
+    流程：
+    原始数据 -> 按类别切成多个 task -> 每个 task 再切给多个 client -> 构造 dataloader
+
+    返回：
+    {
+        "task0": {
+            "train_dataset": ...,
+            "val_dataset": ...,
+            "test_dataset": ...,
+            "client_indices": ...,
+            "client_datasets": ...,
+            "client_loaders": ...,
+            "val_loader": ...,
+            "test_loader": ...
+        },
+        ...
+    }
+    """
+    if dataset == "cifar10":
+        train_set, val_set, test_set = load_cifar10(root=root, val_ratio=val_ratio, seed=seed)
+        num_classes = 10
+    elif dataset == "svhn":
+        train_set, val_set, test_set = load_svhn(root=root, val_ratio=val_ratio, seed=seed)
+        num_classes = 10
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
+
+    if task_classes is None:
+        classes_per_task = num_classes // num_tasks
+        task_classes = [
+            list(range(i * classes_per_task, (i + 1) * classes_per_task))
+            for i in range(num_tasks)
+        ]
+
+    def filter_by_classes(dataset_obj, classes):
+        indices = []
+
+        if isinstance(dataset_obj, Subset):
+            if hasattr(dataset_obj.dataset, "targets"):
+                base_targets = np.array(dataset_obj.dataset.targets)
+            elif hasattr(dataset_obj.dataset, "labels"):
+                base_targets = np.array(dataset_obj.dataset.labels)
+                base_targets = np.where(base_targets == 10, 0, base_targets)
+            else:
+                raise ValueError("Base dataset has no targets or labels.")
+
+            for new_idx, original_idx in enumerate(dataset_obj.indices):
+                label = base_targets[original_idx]
+                if label in classes:
+                    indices.append(new_idx)
+        else:
+            if hasattr(dataset_obj, "targets"):
+                labels = np.array(dataset_obj.targets)
+            elif hasattr(dataset_obj, "labels"):
+                labels = np.array(dataset_obj.labels)
+                labels = np.where(labels == 10, 0, labels)
+            else:
+                raise ValueError("Dataset has no targets or labels.")
+
+            for idx, label in enumerate(labels):
+                if label in classes:
+                    indices.append(idx)
+
+        return Subset(dataset_obj, indices)
+
+    tasks = {}
+
+    for task_id, classes in enumerate(task_classes):
+        task_train = filter_by_classes(train_set, classes)
+        task_val = filter_by_classes(val_set, classes)
+        task_test = filter_by_classes(test_set, classes)
+
+        client_indices = iid_split_indices(
+            task_train,
+            num_clients=num_clients,
+            seed=seed
+        )
+        client_datasets = build_client_subsets(task_train, client_indices)
+        client_loaders = build_client_loaders(
+            client_datasets,
+            batch_size=train_batch_size,
+            num_workers=num_workers
+        )
+
+        val_loader = build_test_loader(
+            task_val,
+            batch_size=test_batch_size,
+            num_workers=num_workers
+        )
+        test_loader = build_test_loader(
+            task_test,
+            batch_size=test_batch_size,
+            num_workers=num_workers
+        )
+
+        tasks[f"task{task_id}"] = {
+            "train_dataset": task_train,
+            "val_dataset": task_val,
+            "test_dataset": task_test,
+            "client_indices": client_indices,
+            "client_datasets": client_datasets,
+            "client_loaders": client_loaders,
+            "val_loader": val_loader,
+            "test_loader": test_loader,
+        }
+
+    return tasks

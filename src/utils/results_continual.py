@@ -90,3 +90,55 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting.png"))
     plt.close()
+
+def plot_continual_comparison(history_no_replay, history_replay, save_dir,
+                              experiment_name="continual_cifar10_comparison"):
+    """
+    将 no replay 和 replay 的结果画到同一张图中进行对比。
+    包括：
+    1. Task1 Test Accuracy 对比
+    2. Task2 Test Accuracy 对比
+    3. Forgetting 对比
+    """
+    ensure_dir(save_dir)
+
+    x = list(range(1, len(history_no_replay["round"]) + 1))
+    labels = [f'{p}-{r}' for p, r in zip(history_no_replay["phase"], history_no_replay["round"])]
+
+    no_task1 = history_no_replay["task1_test_acc"]
+    no_task2 = [acc if acc is not None else math.nan for acc in history_no_replay["task2_test_acc"]]
+    no_forgetting = [fg if fg is not None else math.nan for fg in history_no_replay["forgetting"]]
+
+    re_task1 = history_replay["task1_test_acc"]
+    re_task2 = [acc if acc is not None else math.nan for acc in history_replay["task2_test_acc"]]
+    re_forgetting = [fg if fg is not None else math.nan for fg in history_replay["forgetting"]]
+
+    # 1. Accuracy comparison
+    plt.figure(figsize=(9, 5))
+    plt.plot(x, no_task1, marker="o", label="Task1 Acc (No Replay)")
+    plt.plot(x, re_task1, marker="o", linestyle="--", label="Task1 Acc (Replay)")
+    plt.plot(x, no_task2, marker="s", label="Task2 Acc (No Replay)")
+    plt.plot(x, re_task2, marker="s", linestyle="--", label="Task2 Acc (Replay)")
+    plt.xlabel("Training Stage")
+    plt.ylabel("Accuracy")
+    plt.title(f"{experiment_name} - Accuracy Comparison")
+    plt.xticks(x, labels, rotation=45)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f"{experiment_name}_acc_comparison.png"))
+    plt.close()
+
+    # 2. Forgetting comparison
+    plt.figure(figsize=(9, 5))
+    plt.plot(x, no_forgetting, marker="^", color="red", label="Forgetting (No Replay)")
+    plt.plot(x, re_forgetting, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
+    plt.xlabel("Training Stage")
+    plt.ylabel("Forgetting")
+    plt.title(f"{experiment_name} - Forgetting Comparison")
+    plt.xticks(x, labels, rotation=45)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, f"{experiment_name}_forgetting_comparison.png"))
+    plt.close()

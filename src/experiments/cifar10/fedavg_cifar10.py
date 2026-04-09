@@ -5,9 +5,9 @@
 import torch
 import os
 from datasets.data_loader import prepare_federated_dataloaders
-from model import SimpleCNN
-from fedavg import run_fedavg
-from src.utils.results_standard import save_history_json, save_history_csv, plot_history
+from core.model import SimpleCNN
+from core.fedavg import run_fedavg
+from utils.results_standard import save_history_json, save_history_csv, plot_history
 
 
 from datetime import datetime

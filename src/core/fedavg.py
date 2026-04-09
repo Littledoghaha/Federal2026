@@ -17,7 +17,7 @@ fedavg 训练流程。
 import copy
 import torch
 
-from train_eval import train_local, evaluate
+from core.train_eval import train_local, evaluate
 
 
 def average_state_dicts(state_dicts, weights):
