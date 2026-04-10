@@ -15,8 +15,6 @@ import matplotlib.pyplot as plt
 
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
-
-
 def save_history_json(history, save_path):
     ensure_dir(os.path.dirname(save_path))
     with open(save_path, "w", encoding="utf-8") as f:
@@ -25,44 +23,93 @@ def save_history_json(history, save_path):
 
 def save_history_csv(history, save_path):
     ensure_dir(os.path.dirname(save_path))
-
-    rounds = history["round"]
-    test_losses = history["test_loss"]
-    test_accs = history["test_acc"]
-
+    # centralized 集中式学习实验: 用 epoch
+    # federated 联邦学习实验: 用 round
+    if "epoch" in history:
+        x_key = "epoch"
+    elif "round" in history:
+        x_key = "round"
+    else:
+        raise ValueError("History must contain 'epoch' or 'round'.")
     with open(save_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["round", "test_loss", "test_acc"])
+        header = [x_key]
+        for key in ["train_loss", "train_acc", "val_loss", "val_acc"]:
+            if key in history:
+                header.append(key)
+        writer.writerow(header)
+        num_rows = len(history[x_key])
+        # 按行写入每个 num_rows （epoch/round） 的结果
+        for i in range(num_rows):
+            row = [history[x_key][i]]
+            for key in ["train_loss", "train_acc", "val_loss", "val_acc"]:
+                if key in history:
+                    row.append(history[key][i])
+            writer.writerow(row)
+        if history.get("final_test_loss") is not None and history.get("final_test_acc") is not None:
+            writer.writerow([])
+            writer.writerow(["final_test_loss", "final_test_acc"])
+            writer.writerow([history["final_test_loss"], history["final_test_acc"]])
 
-        for r, loss, acc in zip(rounds, test_losses, test_accs):
-            writer.writerow([r, loss, acc])
 
-
-def plot_history(history, save_dir, experiment_name="cifar10_federated"):
+def plot_history(history, save_dir, experiment_name="standard_experiment"):
     ensure_dir(save_dir)
 
-    rounds = history["round"]
-    test_losses = history["test_loss"]
-    test_accs = history["test_acc"]
+    if "epoch" in history:
+        x = history["epoch"]
+        xlabel = "Epoch"
+    elif "round" in history:
+        x = history["round"]
+        xlabel = "Round"
+    else:
+        raise ValueError("History must contain 'epoch' or 'round'.")
 
-    # 画 test loss 曲线
-    plt.figure(figsize=(6, 4))
-    plt.plot(rounds, test_losses, marker="o")
-    plt.xlabel("Round")
-    plt.ylabel("Test Loss")
-    plt.title(f"{experiment_name} - Test Loss")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{experiment_name}_test_loss.png"))
-    plt.close()
+    # 1. Loss 图：优先画 train vs val 对比
+    if "train_loss" in history and "val_loss" in history:
+        plt.figure(figsize=(6, 4))
+        plt.plot(x, history["train_loss"], marker="o", label="Train Loss")
+        plt.plot(x, history["val_loss"], marker="s", label="Val Loss")
+        plt.xlabel(xlabel)
+        plt.ylabel("Loss")
+        plt.title(f"{experiment_name} - Train vs Val Loss")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_loss.png"))
+        plt.close()
+    elif "val_loss" in history:
+        plt.figure(figsize=(6, 4))
+        plt.plot(x, history["val_loss"], marker="o", label="Val Loss")
+        plt.xlabel(xlabel)
+        plt.ylabel("Loss")
+        plt.title(f"{experiment_name} - Val Loss")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_val_loss.png"))
+        plt.close()
 
-    # 画 test acc 曲线
-    plt.figure(figsize=(6, 4))
-    plt.plot(rounds, test_accs, marker="o")
-    plt.xlabel("Round")
-    plt.ylabel("Test Accuracy")
-    plt.title(f"{experiment_name} - Test Accuracy")
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, f"{experiment_name}_test_acc.png"))
-    plt.close()
+    # 2. Accuracy 图：优先画 train vs val 对比
+    if "train_acc" in history and "val_acc" in history:
+        plt.figure(figsize=(6, 4))
+        plt.plot(x, history["train_acc"], marker="o", label="Train Acc")
+        plt.plot(x, history["val_acc"], marker="s", label="Val Acc")
+        plt.xlabel(xlabel)
+        plt.ylabel("Accuracy")
+        plt.title(f"{experiment_name} - Train vs Val Accuracy")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_acc.png"))
+        plt.close()
+    elif "val_acc" in history:
+        plt.figure(figsize=(6, 4))
+        plt.plot(x, history["val_acc"], marker="o", label="Val Acc")
+        plt.xlabel(xlabel)
+        plt.ylabel("Accuracy")
+        plt.title(f"{experiment_name} - Val Accuracy")
+        plt.grid(True)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(save_dir, f"{experiment_name}_val_acc.png"))
+        plt.close()

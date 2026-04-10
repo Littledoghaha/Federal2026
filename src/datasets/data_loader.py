@@ -80,6 +80,7 @@ def prepare_federated_dataloaders(num_clients=3, train_batch_size=64, test_batch
     cifar_client_loaders = build_client_loaders(cifar_client_datasets, batch_size=train_batch_size, num_workers=num_workers)
     svhn_client_loaders = build_client_loaders(svhn_client_datasets, batch_size=train_batch_size, num_workers=num_workers)
     
+    # train_batch_size 用于客户端本地训练；test_batch_size 同时用于验证集和测试集评估
     cifar_val_loader = build_test_loader(cifar_val, batch_size=test_batch_size, num_workers=num_workers)
     cifar_test_loader = build_test_loader(cifar_test, batch_size=test_batch_size, num_workers=num_workers)
     svhn_val_loader = build_test_loader(svhn_val, batch_size=test_batch_size, num_workers=num_workers)

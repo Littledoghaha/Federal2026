@@ -95,6 +95,7 @@ def fedavg_round(
 def run_fedavg(
     global_model,
     client_loaders,
+    val_loader,
     test_loader,
     device,
     num_rounds=3,
@@ -105,17 +106,19 @@ def run_fedavg(
 ):
     history = {
         "round": [],
-        "test_loss": [],
-        "test_acc": [],
+        "val_loss": [],
+        "val_acc": [],
+        "final_test_loss": None,
+        "final_test_acc": None,
     }
 
     # round 0：未训练前先测一次
-    test_loss, test_acc = evaluate(global_model, test_loader, device)
-    print(f"round 0 - test_loss: {test_loss:.4f} - test_acc: {test_acc:.4f}")
+    val_loss, val_acc = evaluate(global_model, val_loader, device)
+    print(f"round 0 - val_loss: {val_loss:.4f} - val_acc: {val_acc:.4f}")
 
     history["round"].append(0)
-    history["test_loss"].append(test_loss)
-    history["test_acc"].append(test_acc)
+    history["val_loss"].append(val_loss)
+    history["val_acc"].append(val_acc)
 
     for round_idx in range(1, num_rounds + 1):
         print(f"\n=== Federated Round {round_idx}/{num_rounds} ===")
@@ -130,12 +133,18 @@ def run_fedavg(
             weight_decay=weight_decay,
             verbose=verbose,
         )
-        # 第六步：测试模型并评估记录性能。
-        test_loss, test_acc = evaluate(global_model, test_loader, device)
-        print(f"round {round_idx} - test_loss: {test_loss:.4f} - test_acc: {test_acc:.4f}")
+        # 第六步：每轮联邦聚合后，服务器使用验证集评估模型性能，并记录历史
+        val_loss, val_acc = evaluate(global_model, val_loader, device)
+        print(f"round {round_idx} - val_loss: {val_loss:.4f} - val_acc: {val_acc:.4f}")
 
         history["round"].append(round_idx)
-        history["test_loss"].append(test_loss)
-        history["test_acc"].append(test_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
+    
+    # 第七步：测试模型并评估记录性能。
+    final_test_loss, final_test_acc = evaluate(global_model, test_loader, device)
+    history["final_test_loss"] = final_test_loss
+    history["final_test_acc"] = final_test_acc
+    print(f"\nfinal test - test_loss: {final_test_loss:.4f} - test_acc: {final_test_acc:.4f}")
 
     return global_model, history

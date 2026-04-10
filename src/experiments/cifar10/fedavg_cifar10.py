@@ -20,11 +20,12 @@ def run(config, save_dir):
         root="data",
         num_clients=config["num_clients"],
         train_batch_size=config["train_batch_size"],
-        test_batch_size=config["test_batch_size"],
+        test_batch_size=config["test_batch_size"], # train_batch_size 用于客户端本地训练；test_batch_size 同时用于验证集和测试集评估
         seed=config["seed"],
         num_workers=0,
     )
     cifar_client_loaders = data_bundle["cifar"]["client_loaders"]
+    cifar_val_loader = data_bundle["cifar"]["val_loader"]
     cifar_test_loader = data_bundle["cifar"]["test_loader"]
     print("\nCIFAR-10 client sizes:")
     for client_id, loader in cifar_client_loaders.items():
@@ -33,14 +34,13 @@ def run(config, save_dir):
     global_model, history = run_fedavg(
         global_model=global_model,
         client_loaders=cifar_client_loaders,
+        val_loader=cifar_val_loader,
         test_loader=cifar_test_loader,
         device=device,
         num_rounds=config["num_rounds"],
-        local_epochs=config[
-            "local_epochs"
-        ],  # 每一轮联邦聚合之前，每个客户端在自己本地数据上训练多少个 epoch
+        local_epochs=config["local_epochs"],
         lr=config["lr"],
-        weight_decay=config["weight_decay"],  # 正则化参数，本质上是为了防止模型过拟合
+        weight_decay=config["weight_decay"], # 正则化参数，本质上是为了防止模型过拟合
         verbose=True,
     )
 
@@ -50,5 +50,6 @@ def run(config, save_dir):
     save_history_csv(history, os.path.join(save_dir, "history.csv"))
     plot_history(history, save_dir, f'{config["dataset"]}_federated')
     print("\nDone.")
-    print("test_acc history:", [round(x, 4) for x in history["test_acc"]])
+    print("val_acc history:", [round(x, 4) for x in history["val_acc"]])
+    print("final_test_acc:", round(history["final_test_acc"], 4))
     print(f"Results saved to: {save_dir}")

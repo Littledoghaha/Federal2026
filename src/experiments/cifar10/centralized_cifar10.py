@@ -15,9 +15,10 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from torchvision import datasets, transforms
 from core.model import SimpleCNN
+from datasets.data_loader import prepare_centralized_dataloaders
+from utils.results_standard import save_history_json, save_history_csv
+
 
 def set_seed(seed=42):
     """
@@ -33,31 +34,6 @@ def set_seed(seed=42):
     torch.manual_seed(seed)
 
 
-def save_history_json(history, result_dir):
-    # 将训练历史保存为 JSON 文件
-    path = os.path.join(result_dir, "history.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(history, f, indent=2, ensure_ascii=False)
-
-
-def save_history_csv(history, result_dir):
-    # 将训练历史保存为 CSV 文件
-    path = os.path.join(result_dir, "history.csv")
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["epoch", "train_loss", "test_loss", "test_acc"])
-        # 按行写入每个 epoch 的结果
-        for i in range(len(history["epoch"])):
-            writer.writerow(
-                [
-                    history["epoch"][i],
-                    history["train_loss"][i],
-                    history["test_loss"][i],
-                    history["test_acc"][i],
-                ]
-            )
-
-
 def train_one_epoch(model, train_loader, optimizer, criterion, device):
     """
     训练一个 epoch。
@@ -68,11 +44,12 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device):
     - criterion: 损失函数（这里是交叉熵）
     - device: 训练设备（cpu 或 cuda）
     返回：
-    - 当前 epoch 的平均训练损失
+    - 当前 epoch 的平均训练损失和准确率
     """
-    # 训练一个 epoch 并返回当前epoch的平均训练损失
+    # 训练一个 epoch 并返回当前epoch的平均训练损失和准确率
     model.train()  # 切换到训练模式
     total_loss = 0.0
+    total_correct = 0
     total_samples = 0
 
     for images, labels in train_loader:
@@ -93,11 +70,17 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device):
         batch_size = labels.size(0)
         total_loss += loss.item() * batch_size
         total_samples += batch_size
-    # 返回整个 epoch 的平均损失
-    return total_loss / total_samples
+        # 取每个样本预测概率最大的类别作为预测结果
+        preds = outputs.argmax(dim=1)
+        # 统计预测正确的样本数量
+        total_correct += (preds == labels).sum().item()
+    # 计算平均损失和准确率
+    avg_loss = total_loss / total_samples
+    avg_acc = total_correct / total_samples
+    return avg_loss, avg_acc
 
 
-def evaluate(model, test_loader, criterion, device):
+def evaluate(model, val_loader, criterion, device):
     """
     在测试集上评估模型。
     返回：
@@ -110,7 +93,7 @@ def evaluate(model, test_loader, criterion, device):
     total_samples = 0
     # 测试阶段不需要计算梯度，可以节省显存和时间
     with torch.no_grad():
-        for images, labels in test_loader:
+        for images, labels in val_loader:
             images, labels = images.to(device), labels.to(device)
             # 前向传播
             outputs = model(images)
@@ -139,28 +122,17 @@ def run_centralized(config, result_dir):
     )
     print(f"Device: {device}")
 
-    # 2. 定义数据预处理
-    # 这里只做了最基础的 ToTensor()，即把图像转成张量
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-        ]
+    # 2. 使用统一的数据准备接口：train / val / test
+    train_loader, val_loader, test_loader = prepare_centralized_dataloaders(
+        dataset="cifar10",
+        batch_size=config["train_batch_size"],
+        test_batch_size=config["test_batch_size"],
+        seed=config["seed"],
+        num_workers=0,
+        val_ratio=0.1,
     )
-    # 3. 加载 CIFAR-10 数据集
-    train_dataset = datasets.CIFAR10(
-        root="./data", train=True, download=True, transform=transform
-    )
-    test_dataset = datasets.CIFAR10(
-        root="./data", train=False, download=True, transform=transform
-    )
-    # 4. 创建数据加载器
-    train_loader = DataLoader(
-        train_dataset, batch_size=config["train_batch_size"], shuffle=True
-    )
-    test_loader = DataLoader(
-        test_dataset, batch_size=config["test_batch_size"], shuffle=False
-    )
-    # 5. 初始化模型、损失函数和优化器
+
+    # 3. 初始化模型、损失函数和优化器
     model = SimpleCNN().to(device)
     criterion = nn.CrossEntropyLoss()  # 采用交叉熵损失函数，适用于分类任务
     optimizer = optim.Adam(  # 采用 Adam 优化器
@@ -168,14 +140,22 @@ def run_centralized(config, result_dir):
     )
 
     num_epochs = config["num_rounds"]  # 设置集中式学习轮次，跟联邦学习的轮次一致
-    history = {"epoch": [], "train_loss": [], "test_loss": [], "test_acc": []}
+    history = {
+        "epoch": [],
+        "train_loss": [],
+        "train_acc": [],
+        "val_loss": [],
+        "val_acc": [],
+        "final_test_loss": None,
+        "final_test_acc": None,
+    }
 
     start_time = time.time()
 
-    # 6. 开始训练
+    # 4. 开始训练
     for epoch in range(1, num_epochs + 1):
         # 训练一个 epoch
-        train_loss = train_one_epoch(
+        train_loss, train_acc = train_one_epoch(
             model=model,
             train_loader=train_loader,
             optimizer=optimizer,
@@ -183,10 +163,10 @@ def run_centralized(config, result_dir):
             device=device
         )
 
-        # 在测试集上评估
-        test_loss, test_acc = evaluate(
+        # 在验证集上评估
+        val_loss, val_acc = evaluate(
             model=model,
-            test_loader=test_loader,
+            val_loader=val_loader,
             criterion=criterion,
             device=device
         )
@@ -194,15 +174,31 @@ def run_centralized(config, result_dir):
         # 保存当前 epoch 的结果
         history["epoch"].append(epoch)
         history["train_loss"].append(train_loss)
-        history["test_loss"].append(test_loss)
-        history["test_acc"].append(test_acc)
+        history["train_acc"].append(train_acc)
+        history["val_loss"].append(val_loss)
+        history["val_acc"].append(val_acc)
 
         print(
             f"[Centralized] Epoch {epoch}/{num_epochs} | "
             f"Train Loss: {train_loss:.4f} | "
-            f"Test Loss: {test_loss:.4f} | "
-            f"Test Acc: {test_acc:.4f}"
+            f"Train Acc: {train_acc:.4f} | "
+            f"Val Loss: {val_loss:.4f} | "
+            f"Val Acc: {val_acc:.4f}"
         )
+
+    # 5. 最后在测试集上评估并记录结果
+    final_test_loss, final_test_acc = evaluate(
+        model=model,
+        test_loader=test_loader,
+        criterion=criterion,
+        device=device
+    )
+    history["final_test_loss"] = final_test_loss
+    history["final_test_acc"] = final_test_acc
+    print(
+        f"\n[Centralized] Final Test Loss: {final_test_loss:.4f} | "
+        f"Final Test Acc: {final_test_acc:.4f}"
+    )
 
     total_time = time.time() - start_time
 
@@ -214,8 +210,10 @@ def run_centralized(config, result_dir):
     summary = {
         "experiment_name": f'{config["dataset"]}_centralized',
         "num_epochs": num_epochs,
-        "final_test_acc": history["test_acc"][-1],
-        "final_test_loss": history["test_loss"][-1],
+        "final_val_acc": history["val_acc"][-1],
+        "final_val_loss": history["val_loss"][-1],
+        "final_test_acc": history["final_test_acc"],
+        "final_test_loss": history["final_test_loss"],
         "total_time_sec": total_time,
     }
 
