@@ -1,8 +1,8 @@
 {
   "dataset": "cifar10",
   "num_clients": 3,
-  "num_rounds": 20,
-  "local_epochs": 1,
+  "num_rounds": 50,
+  "local_epochs": 3,
   "train_batch_size": 64,
   "test_batch_size": 128,
   "lr": 0.0001,

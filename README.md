@@ -30,32 +30,42 @@ federal/
 │   ├── __init__.py
 │   ├── main.py                        # 【项目入口脚本】- 协调三种实验模式
 │   ├── config.json                    # 实验配置文件
-│   ├── fedavg.py                      # 【fedavg 核心算法】
-│   ├── model.py                       # 【神经网络模型定义】
-│   ├── train_eval.py                  # 【训练与评估通用函数】
-│   ├── client_dataloader.py           # 【DataLoader 构建工具】
+│   ├── introduce.md                   # 项目介绍文档
+│   ├── federal_todo.txt               # 待办事项
+│   │
+│   ├── core/                          # 【核心算法模块】
+│   │   ├── __init__.py
+│   │   ├── fedavg.py                  # 【fedavg 核心算法】
+│   │   ├── model.py                   # 【神经网络模型定义】
+│   │   ├── train_eval.py              # 【训练与评估通用函数】
+│   │   ├── continual.py               # 持续学习相关
+│   │   └── fed_continual.py           # 联邦持续学习
 │   │
 │   ├── datasets/                      # 【数据集处理模块】
 │   │   ├── __init__.py
 │   │   ├── cifar_svhn.py              # 数据集加载（CIFAR-10/SVHN）
 │   │   ├── data_loader.py             # 统一数据准备流程
-│   │   └── data_split.py              # 数据分割逻辑（IID）
+│   │   ├── data_split.py              # 数据分割逻辑（IID）
+│   │   └── client_dataloader.py       # DataLoader 构建工具
 │   │
 │   ├── experiments/                   # 【实验模块】
 │   │   ├── __init__.py
-│   │   ├── fedavg_cifar10.py          # fedavg + CIFAR-10 实验
-│   │   ├── centralized_cifar10.py     # 集中式训练基准实验
-│   │   └── continual_cifar10.py       # 持续学习实验
+│   │   ├── cifar10/
+│   │   │   ├── __init__.py
+│   │   │   ├── fedavg_cifar10.py      # fedavg + CIFAR-10 实验
+│   │   │   ├── centralized_cifar10.py # 集中式训练基准实验
+│   │   │   ├── continual_cifar10.py   # 持续学习实验
+│   │   │   └── federated_continual_cifar10.py # 联邦持续学习实验
+│   │   └── svhn/                      # SVHN 实验（预留）
 │   │
 │   ├── utils/                         # 【工具函数模块】
 │   │   ├── __init__.py
 │   │   ├── config.py                  # 配置文件读写
-│   │   └── results_standard.py           # 结果保存与可视化
+│   │   ├── results_standard.py        # 结果保存与可视化
+│   │   └── results_continual.py       # 持续学习结果处理
 │   │
-│   ├── data/                          # 数据缓存目录
-│   ├── fl/                            # 联邦学习相关模块（预留）
-│   ├── cl/                            # 持续学习相关模块（预留）
-│   └── models/                        # 预训练模型目录
+│   └── data/                          # 数据缓存目录
+│       └── cifar-10-batches-py/       # CIFAR-10 数据集缓存
 │
 ├── data/                              # 全局数据目录
 │   ├── test_32x32.mat                 # SVHN 测试集
@@ -85,7 +95,8 @@ federal/
 │
 ├── configs/                           # 配置文件目录（预留）
 ├── notebooks/                         # Jupyter notebooks
-└── outputs/                           # 其他输出目录
+├── outputs/                           # 其他输出目录
+└── gitclone/                          # 克隆的仓库（预留）
 ```
 
 ---
@@ -125,7 +136,7 @@ python -m src.main continual
 
 ---
 
-### 2️⃣ **src/fedavg.py** - fedavg 联邦学习核心算法
+### 2️⃣ **src/core/fedavg.py** - fedavg 联邦学习核心算法
 
 **功能**：实现 fedavg 算法的完整流程
 
@@ -149,7 +160,7 @@ python -m src.main continual
 
 ---
 
-### 3️⃣ **src/model.py** - 神经网络模型
+### 3️⃣ **src/core/model.py** - 神经网络模型
 
 **功能**：定义用于 CIFAR-10 和 SVHN 的卷积神经网络
 
@@ -178,7 +189,7 @@ python -m src.main continual
 
 ---
 
-### 4️⃣ **src/train_eval.py** - 训练与评估函数
+### 4️⃣ **src/core/train_eval.py** - 训练与评估函数
 
 **功能**：提供单个客户端的本地训练和全局模型评估函数
 
@@ -196,7 +207,7 @@ python -m src.main continual
 
 ---
 
-### 5️⃣ **src/client_dataloader.py** - DataLoader 工具
+### 5️⃣ **src/datasets/client_dataloader.py** - DataLoader 工具
 
 **功能**：构建各种数据加载器
 
@@ -303,7 +314,7 @@ python -m src.main continual
 
 ## 🧪 三大实验模块
 
-### 1. **src/experiments/fedavg_cifar10.py** - 联邦学习实验
+### 1. **src/experiments/cifar10/fedavg_cifar10.py** - 联邦学习实验
 
 **功能**：fedavg 算法在 CIFAR-10 上的基准实验
 
@@ -322,7 +333,7 @@ python -m src.main continual
 
 ---
 
-### 2. **src/experiments/centralized_cifar10.py** - 集中式学习实验
+### 2. **src/experiments/cifar10/centralized_cifar10.py** - 集中式学习实验
 
 **功能**：集中式学习作为基准对比
 
@@ -333,7 +344,7 @@ python -m src.main continual
 
 ---
 
-### 3. **src/experiments/continual_cifar10.py** - 持续学习实验
+### 3. **src/experiments/cifar10/continual_cifar10.py** - 持续学习实验
 
 **功能**：模拟"防灾忘"（Catastrophic Forgetting）场景，评估模型在学习新任务时是否遗忘旧任务
 

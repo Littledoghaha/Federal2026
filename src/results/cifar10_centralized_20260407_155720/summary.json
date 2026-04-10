@@ -1,7 +1,0 @@
-{
-  "experiment_name": "cifar10_centralized",
-  "num_epochs": 3,
-  "final_test_acc": 0.6608,
-  "final_test_loss": 0.9498648229598999,
-  "total_time_sec": 143.2287952899933
-}
