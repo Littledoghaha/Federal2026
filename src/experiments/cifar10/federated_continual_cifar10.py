@@ -13,6 +13,7 @@ CIFAR-10 版本联邦持续学习调用脚本
 
 import torch
 import random
+import numpy as np
 from types import SimpleNamespace
 
 from datasets.data_loader import prepare_federated_continual_dataloaders
@@ -27,6 +28,7 @@ def run_federated_continual(config, save_dir):
 
     def set_seed(seed=42):
         random.seed(seed)
+        np.random.seed(seed)
         torch.manual_seed(seed)
 
     set_seed(config["seed"])
