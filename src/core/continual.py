@@ -16,6 +16,7 @@ import os
 import json
 import random
 import torch
+import numpy as np
 from torch.utils.data import Subset, ConcatDataset
 
 from core.train_eval import train_local, evaluate
@@ -56,6 +57,7 @@ def run_continual_learning(model, tasks, config, save_dir):
         设置随机种子，保证实验尽量可复现。
         """
         random.seed(seed)
+        np.random.seed(seed)
         torch.manual_seed(seed)
 
     set_seed(config["seed"])
@@ -70,8 +72,7 @@ def run_continual_learning(model, tasks, config, save_dir):
     num_tasks = len(tasks)
 
     # =========================
-    # 用于记录训练过程指标
-    # 注意：这里改为动态生成 task1/task2/task3/... 的指标字段
+    # 用于记录训练过程指标，动态生成 task1/task2/task3/... 的指标字段
     # =========================
     history = {
         "phase": [],
@@ -83,7 +84,7 @@ def run_continual_learning(model, tasks, config, save_dir):
         history[f"task{task_idx + 1}_val_acc"] = []
         history[f"task{task_idx + 1}_test_acc"] = []
 
-    # 记录每个任务在其训练结束时的参考精度，用于后续计算遗忘
+    # 记录每个任务在其训练结束时的准确率，用于后续计算遗忘
     task_reference_acc = {}
 
     def append_history(task_phase_name, round_idx, eval_results, forgetting_value):
@@ -263,7 +264,7 @@ def run_continual_learning(model, tasks, config, save_dir):
             )
 
         # =========================
-        # 当前任务训练结束后，记录该任务参考精度
+        # 当前任务训练结束后，记录该任务准确率
         # 这里采用“该任务训练结束时的 test acc”作为 reference
         # 后续阶段据此计算该任务被遗忘了多少
         # =========================
@@ -294,9 +295,17 @@ def run_continual_learning(model, tasks, config, save_dir):
         "final_forgetting": history["forgetting"][-1],
     }
 
-    # 动态记录每个任务的最终测试精度
+    # 记录每个任务的最终测试准确率
     for task_idx in range(num_tasks):
         summary[f"final_task{task_idx + 1}_test_acc"] = history[f"task{task_idx + 1}_test_acc"][-1]
+    # 计算最终平均准确率
+    final_task_accs = [
+        summary[f"final_task{task_idx + 1}_test_acc"]
+        for task_idx in range(num_tasks)
+        if summary[f"final_task{task_idx + 1}_test_acc"] is not None
+    ]
+    summary["final_avg_test_acc"] = sum(final_task_accs) / len(final_task_accs)
+    print(f"Final Average Test Acc: {summary['final_avg_test_acc']:.4f}")
 
     with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)

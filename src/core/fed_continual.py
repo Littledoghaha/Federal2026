@@ -19,8 +19,8 @@ import os
 import json
 import random
 import torch
+import numpy as np
 from torch.utils.data import Subset, ConcatDataset
-
 from core.fedavg import fedavg_round
 from core.train_eval import evaluate
 from datasets.client_dataloader import build_client_loaders
@@ -51,6 +51,7 @@ def run_federated_continual_learning(global_model, tasks, config, save_dir):
 
     def set_seed(seed=42):
         random.seed(seed)
+        np.random.seed(seed)
         torch.manual_seed(seed)
 
     set_seed(config["seed"])
@@ -75,7 +76,7 @@ def run_federated_continual_learning(global_model, tasks, config, save_dir):
         history[f"task{task_idx + 1}_val_acc"] = []
         history[f"task{task_idx + 1}_test_acc"] = []
 
-    # 保存每个任务训练完成时的参考精度
+    # 保存每个任务训练完成时的准确率
     task_reference_acc = {}
 
     def append_history(task_phase_name, round_idx, eval_results, forgetting_value):
@@ -231,7 +232,7 @@ def run_federated_continual_learning(global_model, tasks, config, save_dir):
             )
 
         # =========================
-        # 当前任务训练结束后，记录该任务参考精度
+        # 当前任务训练结束后，记录该任务准确率
         # =========================
         final_eval = evaluate_seen_tasks(global_model, tasks, [task_idx], device)
         task_reference_acc[task_idx] = final_eval[task_idx]["test_acc"]
@@ -259,9 +260,17 @@ def run_federated_continual_learning(global_model, tasks, config, save_dir):
         "final_forgetting": history["forgetting"][-1],
     }
 
-    # 动态记录每个任务的最终测试精度
+    # 记录每个任务的最终测试准确率
     for task_idx in range(num_tasks):
         summary[f"final_task{task_idx + 1}_test_acc"] = history[f"task{task_idx + 1}_test_acc"][-1]
+    # 计算最终平均准确率
+    final_task_accs = [
+        summary[f"final_task{task_idx + 1}_test_acc"]
+        for task_idx in range(num_tasks)
+        if summary[f"final_task{task_idx + 1}_test_acc"] is not None
+    ]
+    summary["final_avg_test_acc"] = sum(final_task_accs) / len(final_task_accs)
+    print(f"Final Average Test Acc: {summary['final_avg_test_acc']:.4f}")
 
     with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
