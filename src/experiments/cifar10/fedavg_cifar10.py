@@ -4,6 +4,7 @@
 
 import torch
 import os
+import json
 from datasets.data_loader import prepare_federated_dataloaders
 from core.model import SimpleCNN
 from core.fedavg import run_fedavg
@@ -49,6 +50,18 @@ def run(config, save_dir):
     save_history_json(history, os.path.join(save_dir, "history.json"))
     save_history_csv(history, os.path.join(save_dir, "history.csv"))
     plot_history(history, save_dir, f'{config["dataset"]}_federated')
+    summary = {
+        "experiment_name": f'{config["dataset"]}_federated',
+        "num_rounds": config["num_rounds"],
+        "local_epochs": config["local_epochs"],
+        "num_clients": config["num_clients"],
+        "final_val_acc": history["val_acc"][-1],
+        "final_val_loss": history["val_loss"][-1],
+        "final_test_acc": history["final_test_acc"],
+        "final_test_loss": history["final_test_loss"],
+    }
+    with open(os.path.join(save_dir, "summary.json"), "w", encoding="utf-8") as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
     print("\nDone.")
     print("val_acc history:", [round(x, 4) for x in history["val_acc"]])
     print("final_test_acc:", round(history["final_test_acc"], 4))
