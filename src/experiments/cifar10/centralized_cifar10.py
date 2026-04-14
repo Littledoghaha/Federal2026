@@ -8,7 +8,6 @@
 
 import os
 import json
-import csv
 import time
 import random
 import numpy as np
@@ -18,7 +17,7 @@ import torch.optim as optim
 from core.model import SimpleCNN
 from datasets.data_loader import prepare_centralized_dataloaders
 from utils.results_standard import save_history_json, save_history_csv
-
+from utils.results_standard import plot_history
 
 def set_seed(seed=42):
     """
@@ -32,6 +31,8 @@ def set_seed(seed=42):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def train_one_epoch(model, train_loader, optimizer, criterion, device):
@@ -74,34 +75,39 @@ def train_one_epoch(model, train_loader, optimizer, criterion, device):
         preds = outputs.argmax(dim=1)
         # 统计预测正确的样本数量
         total_correct += (preds == labels).sum().item()
+
     # 计算平均损失和准确率
     avg_loss = total_loss / total_samples
     avg_acc = total_correct / total_samples
     return avg_loss, avg_acc
 
 
-def evaluate(model, val_loader, criterion, device):
+def evaluate(model, data_loader, criterion, device):
     """
-    在测试集上评估模型。
+    在评估集上评估模型。
+    这里的评估集既可以是验证集，也可以是测试集。
     返回：
-    - avg_loss: 平均测试损失
-    - acc: 测试准确率
+    - avg_loss: 平均损失
+    - acc: 准确率
     """
     model.eval()  # 切换到评估模式
     total_loss = 0.0
     correct = 0
     total_samples = 0
-    # 测试阶段不需要计算梯度，可以节省显存和时间
+
+    # 测试/验证阶段不需要计算梯度，可以节省显存和时间
     with torch.no_grad():
-        for images, labels in val_loader:
+        for images, labels in data_loader:
             images, labels = images.to(device), labels.to(device)
             # 前向传播
             outputs = model(images)
             # 计算损失
             loss = criterion(outputs, labels)
+
             batch_size = labels.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
+
             # 取每个样本预测分数最大的类别作为预测结果
             preds = outputs.argmax(dim=1)
             # 统计预测正确的数量
@@ -115,12 +121,21 @@ def evaluate(model, val_loader, criterion, device):
 def run_centralized(config, result_dir):
     # 1. 设置随机种子和设备
     set_seed(config["seed"])
-    device = torch.device(
-        config["device"]
-        if torch.cuda.is_available() or config["device"] == "cpu"
-        else "cpu"
-    )
+
+    # 如果用户指定 cpu，则使用 cpu；
+    # 如果用户指定 cuda 且当前机器支持 GPU，则使用对应 cuda；
+    # 否则自动回退到 cpu。
+    if config["device"] == "cpu":
+        device = torch.device("cpu")
+    elif torch.cuda.is_available():
+        device = torch.device(config["device"])
+    else:
+        device = torch.device("cpu")
+
     print(f"Device: {device}")
+
+    # 确保结果目录存在
+    os.makedirs(result_dir, exist_ok=True)
 
     # 2. 使用统一的数据准备接口：train / val / test
     train_loader, val_loader, test_loader = prepare_centralized_dataloaders(
@@ -133,7 +148,7 @@ def run_centralized(config, result_dir):
     )
 
     # 3. 初始化模型、损失函数和优化器
-    model = SimpleCNN().to(device)
+    model = SimpleCNN(num_classes=10).to(device)
     criterion = nn.CrossEntropyLoss()  # 采用交叉熵损失函数，适用于分类任务
     optimizer = optim.Adam(  # 采用 Adam 优化器
         model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
@@ -160,15 +175,15 @@ def run_centralized(config, result_dir):
             train_loader=train_loader,
             optimizer=optimizer,
             criterion=criterion,
-            device=device
+            device=device,
         )
 
         # 在验证集上评估
         val_loss, val_acc = evaluate(
             model=model,
-            val_loader=val_loader,
+            data_loader=val_loader,
             criterion=criterion,
-            device=device
+            device=device,
         )
 
         # 保存当前 epoch 的结果
@@ -189,12 +204,15 @@ def run_centralized(config, result_dir):
     # 5. 最后在测试集上评估并记录结果
     final_test_loss, final_test_acc = evaluate(
         model=model,
-        test_loader=test_loader,
+        data_loader=test_loader,
         criterion=criterion,
-        device=device
+        device=device,
     )
+
+    # 将最终测试结果写回 history，方便后续保存到 json/csv/summary
     history["final_test_loss"] = final_test_loss
     history["final_test_acc"] = final_test_acc
+
     print(
         f"\n[Centralized] Final Test Loss: {final_test_loss:.4f} | "
         f"Final Test Acc: {final_test_acc:.4f}"
@@ -202,8 +220,10 @@ def run_centralized(config, result_dir):
 
     total_time = time.time() - start_time
 
-    save_history_json(history, result_dir)
-    save_history_csv(history, result_dir)
+    # 保存训练历史
+    save_history_json(history, os.path.join(result_dir, "history.json"))
+    save_history_csv(history, os.path.join(result_dir, "history.csv"))
+
     # 保存模型参数
     torch.save(model.state_dict(), os.path.join(result_dir, "model.pth"))
 
@@ -221,4 +241,4 @@ def run_centralized(config, result_dir):
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     print(f"\nResults saved to: {result_dir}")
-
+    plot_history(history, result_dir, f'{config["dataset"]}_centralized')
