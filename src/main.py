@@ -7,14 +7,13 @@
 """
 import sys
 import os
-from experiments.cifar10.fedavg_cifar10 import run as run_fedavg
-# load_config, create_result_dir, save_config_copy
-from experiments.cifar10.centralized_cifar10 import run_centralized as run_centralized
-from experiments.cifar10.continual_cifar10 import run_continual
+import copy
+from experiments.centralized import run_centralized
+from experiments.continual import run_continual
+from experiments.fedavg import run as run_fedavg
+from experiments.federated_continual import run_federated_continual
 from utils.config import load_config,create_result_dir,save_config_copy
 from utils.results_continual import plot_continual_comparison
-import copy
-from experiments.cifar10.federated_continual_cifar10 import run_federated_continual
 
 def main():
     config = load_config("E:\\federal\\src\\config.json")
@@ -23,7 +22,7 @@ def main():
     
     if mode in ["centralized", "all"]:
         print("\n" + "="*60)
-        print("Experiment 1: Centralized Learning")
+        print(f"Experiment 1: Centralized Learning ({dataset.upper()})")
         print("="*60)
         result_dir = create_result_dir(dataset, "centralized")
         save_config_copy(config, result_dir)
@@ -31,7 +30,7 @@ def main():
     
     if mode in ["federated", "all"]:
         print("\n" + "="*60)
-        print("Experiment 2: Federated Learning")
+        print(f"Experiment 2: Federated Learning ({dataset.upper()})")
         print("="*60)
         result_dir = create_result_dir(dataset, "federated")
         save_config_copy(config, result_dir)
@@ -39,7 +38,7 @@ def main():
     
     if mode in ["continual", "all"]:
         print("\n" + "="*60)
-        print("Experiment 3: Continual Learning (CIFAR-10)")
+        print(f"Experiment 3: Continual Learning ({dataset.upper()})")
         print("="*60)
         result_dir = create_result_dir(dataset, "continual")
         save_config_copy(config, result_dir)
@@ -63,13 +62,13 @@ def main():
             history_no_replay,
             history_replay,
             result_dir,
-            experiment_name="continual_cifar10"
+            experiment_name=f"continual_{dataset}"
         )
     
     # 联邦持续学习实验
     if mode in ["fed_continual", "all"]:
         print("\n" + "="*60)
-        print("Experiment 4: Federated Continual Learning (CIFAR-10)")
+        print(f"Experiment 4: Federated Continual Learning ({dataset.upper()})")
         print("="*60)
         result_dir = create_result_dir(dataset, "fed_continual")
         save_config_copy(config, result_dir)
@@ -90,7 +89,7 @@ def main():
             history_no_replay,
             history_replay,
             result_dir,
-            experiment_name="fed_continual_cifar10"
+            experiment_name=f"fed_continual_{dataset}"
         )
 
 if __name__ == "__main__":
