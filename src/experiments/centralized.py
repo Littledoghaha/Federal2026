@@ -1,9 +1,8 @@
 """
-集中式学习实验（CIFAR-10）
-
-1. 在单机上直接使用完整 CIFAR-10 训练集训练模型
+集中式学习实验：
+1. 在单机上直接使用完整训练集训练模型
 2. 作为联邦学习 / 持续学习实验的 baseline（基线对照）
-
+可在配置设置数据集，实现不同数据集集中式学习。
 """
 
 import os
@@ -139,7 +138,7 @@ def run_centralized(config, result_dir):
 
     # 2. 使用统一的数据准备接口：train / val / test
     train_loader, val_loader, test_loader = prepare_centralized_dataloaders(
-        dataset="cifar10",
+        dataset=config["dataset"],
         batch_size=config["train_batch_size"],
         test_batch_size=config["test_batch_size"],
         seed=config["seed"],

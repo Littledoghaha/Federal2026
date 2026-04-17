@@ -1,5 +1,5 @@
 """
-普通联邦学习（fedavg）在 CIFAR-10 上的 baseline 实验。
+普通联邦学习（fedavg）的 baseline 实验。
 """
 
 import torch
@@ -11,12 +11,11 @@ from core.fedavg import run_fedavg
 from utils.results_standard import save_history_json, save_history_csv, plot_history
 
 
-from datetime import datetime
-
-
 def run(config, save_dir):
     device = torch.device(config["device"] if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
+    dataset_name = config["dataset"] # *
+    bundle_key = "cifar" if dataset_name == "cifar10" else "svhn" # *
     data_bundle = prepare_federated_dataloaders(
         root="data",
         num_clients=config["num_clients"],
@@ -25,18 +24,25 @@ def run(config, save_dir):
         seed=config["seed"],
         num_workers=0,
     )
-    cifar_client_loaders = data_bundle["cifar"]["client_loaders"]
-    cifar_val_loader = data_bundle["cifar"]["val_loader"]
-    cifar_test_loader = data_bundle["cifar"]["test_loader"]
-    print("\nCIFAR-10 client sizes:")
-    for client_id, loader in cifar_client_loaders.items():
+    # cifar_client_loaders = data_bundle["cifar"]["client_loaders"]
+    # cifar_val_loader = data_bundle["cifar"]["val_loader"]
+    # cifar_test_loader = data_bundle["cifar"]["test_loader"]
+    # print("\nCIFAR-10 client sizes:")
+    # for client_id, loader in cifar_client_loaders.items():
+    #     print(f"client {client_id}: {len(loader.dataset)} samples")
+    client_loaders = data_bundle[bundle_key]["client_loaders"] # *
+    val_loader = data_bundle[bundle_key]["val_loader"] # *
+    test_loader = data_bundle[bundle_key]["test_loader"] # *
+    print(f"\n{dataset_name.upper()} client sizes:") # *
+    for client_id, loader in client_loaders.items():
         print(f"client {client_id}: {len(loader.dataset)} samples")
+    
     global_model = SimpleCNN(num_classes=10).to(device)
     global_model, history = run_fedavg(
         global_model=global_model,
-        client_loaders=cifar_client_loaders,
-        val_loader=cifar_val_loader,
-        test_loader=cifar_test_loader,
+        client_loaders=client_loaders,
+        val_loader=val_loader,
+        test_loader=test_loader,
         device=device,
         num_rounds=config["num_rounds"],
         local_epochs=config["local_epochs"],

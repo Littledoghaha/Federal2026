@@ -1,19 +1,12 @@
 """
-CIFAR-10 版本持续学习调用脚本
+持续学习实验
 
 负责：
 - 载入数据集、划分任务和客户端
 - 初始化模型
 - 调用 core.continual.run_continual_learning
 
-本版本已改为：
-- 支持任意 task 数
-- task 划分由 config["task_classes"] 控制
-- 例如：
-    2 task: [[0,1,2,3,4], [5,6,7,8,9]]
-    3 task: [[0,1,2], [3,4,5], [6,7,8,9]]
-
-保证函数名、打印内容和行为与原先代码尽量一致。
+- 支持任意 task 数，task 划分由 config["task_classes"] 控制
 """
 
 import torch
@@ -29,7 +22,7 @@ from core.model import SimpleCNN
 
 def run_continual(config, save_dir):
     """
-    CIFAR-10 持续学习调用函数。
+    持续学习调用函数。
 
     说明：
     - 这里只负责“数据准备 + 模型初始化 + 调用核心算法”
@@ -70,7 +63,7 @@ def run_continual(config, save_dir):
     # - test_loader
     # =========================
     task_data = prepare_continual_dataloaders(
-        dataset="cifar10",
+        dataset=config["dataset"],
         batch_size=config["train_batch_size"],
         test_batch_size=config["test_batch_size"],
         seed=config["seed"],
