@@ -6,6 +6,8 @@
 返回 train/val/test dataset
 """
 
+import os
+
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import Subset
@@ -98,6 +100,7 @@ def load_cifar10(root="data", val_ratio=0.1, seed=42,
     train_set = Subset(train_base, train_indices)
     val_set = Subset(val_base, val_indices)
     return train_set, val_set, test_set
+
 def load_svhn(root="data", val_ratio=0.1, seed=42,
               train_transform=None, test_transform=None):
     """
@@ -136,16 +139,16 @@ def load_svhn(root="data", val_ratio=0.1, seed=42,
     val_set = Subset(val_base, val_indices)
     return train_set, val_set, test_set
 
-def load_all_datasets(root="data", val_ratio=0.1, seed=42):
-    """
-    加载所有数据集
-    Returns:
-        cifar_train, cifar_val, cifar_test, svhn_train, svhn_val, svhn_test
-    """
-    cifar_train, cifar_val, cifar_test = load_cifar10(
-        root=root, val_ratio=val_ratio, seed=seed
-    )
-    svhn_train, svhn_val, svhn_test = load_svhn(
-        root=root, val_ratio=val_ratio, seed=seed
-    )
-    return cifar_train, cifar_val, cifar_test, svhn_train, svhn_val, svhn_test
+# def load_all_datasets(root="/home/lachesis/yinan/yf/federal/src/data", val_ratio=0.1, seed=42):
+#     """
+#     加载所有数据集
+#     Returns:
+#         cifar_train, cifar_val, cifar_test, svhn_train, svhn_val, svhn_test
+#     """
+#     cifar_train, cifar_val, cifar_test = load_cifar10(
+#         root=os.path.join(root, "cifar-10-batches-py"), val_ratio=val_ratio, seed=seed
+#     )
+#     svhn_train, svhn_val, svhn_test = load_svhn(
+#         root=os.path.join(root, "svhn"), val_ratio=val_ratio, seed=seed
+#     )
+#     return cifar_train, cifar_val, cifar_test, svhn_train, svhn_val, svhn_test
