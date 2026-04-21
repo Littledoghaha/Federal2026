@@ -1,34 +1,48 @@
 '''
-负责：
-
-把一个训练集切成多个 client 的索引
-你现在大概率是 IID 平均切分
+负责把一个训练集切成多个 client 的索引
+IID 平均切分
 '''
-
 
 from collections import Counter
 import numpy as np
 from torch.utils.data import Subset
 
-
 def get_dataset_labels(dataset):
     """
-    兼容 CIFAR-10 和 SVHN
-    CIFAR-10: dataset.targets
-    SVHN: dataset.labels
+    兼容 CIFAR-10 / SVHN / Subset
+    说明：
+    - CIFAR-10 一般用 dataset.targets
+    - SVHN 一般用 dataset.labels
+    - 如果传入的是 Subset，则先递归拿到底层数据集的标签，再按 subset 的索引取出对应部分
     """
+    if isinstance(dataset, Subset):
+        base = dataset.dataset
+        indices = np.array(dataset.indices)
+        labels = get_dataset_labels(base)
+        return labels[indices]
+    
     if hasattr(dataset, "targets"):
         return np.array(dataset.targets)
-
+    
     if hasattr(dataset, "labels"):
         labels = np.array(dataset.labels)
-
-        # SVHN 里数字 0 有时会记成 10，这里统一转成 0
-        labels = np.where(labels == 10, 0, labels)
+        labels = np.where(labels == 10, 0, labels)  # SVHN 里数字 0 有时会记成 10，这里统一转成 0
         return labels
-
+    
     raise ValueError("This dataset has no 'targets' or 'labels' attribute.")
 
+def filter_dataset_by_classes(dataset, classes):
+    """
+    从数据集中筛选指定类别的样本，并返回一个新的 Subset。
+    参数：
+        dataset: 原始数据集或 Subset
+        classes: 需要保留的类别列表，如 [0, 1, 2]
+    返回：
+        Subset(dataset, indices)
+    """
+    labels = get_dataset_labels(dataset)
+    indices = [i for i, label in enumerate(labels) if label in classes]
+    return Subset(dataset, indices)
 
 def iid_split_indices(dataset, num_clients=3, seed=42):
     """
