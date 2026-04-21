@@ -14,26 +14,21 @@ from utils.results_standard import save_history_json, save_history_csv, plot_his
 def run(config, save_dir):
     device = torch.device(config["device"] if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
-    dataset_name = config["dataset"] # *
-    bundle_key = "cifar" if dataset_name == "cifar10" else "svhn" # *
+    dataset_name = config["dataset"]
     data_bundle = prepare_federated_dataloaders(
+        dataset=dataset_name,
         root="data",
         num_clients=config["num_clients"],
         train_batch_size=config["train_batch_size"],
-        test_batch_size=config["test_batch_size"], # train_batch_size 用于客户端本地训练；test_batch_size 同时用于验证集和测试集评估
+        test_batch_size=config["test_batch_size"],
         seed=config["seed"],
         num_workers=0,
-    )
-    # cifar_client_loaders = data_bundle["cifar"]["client_loaders"]
-    # cifar_val_loader = data_bundle["cifar"]["val_loader"]
-    # cifar_test_loader = data_bundle["cifar"]["test_loader"]
-    # print("\nCIFAR-10 client sizes:")
-    # for client_id, loader in cifar_client_loaders.items():
-    #     print(f"client {client_id}: {len(loader.dataset)} samples")
-    client_loaders = data_bundle[bundle_key]["client_loaders"] # *
-    val_loader = data_bundle[bundle_key]["val_loader"] # *
-    test_loader = data_bundle[bundle_key]["test_loader"] # *
-    print(f"\n{dataset_name.upper()} client sizes:") # *
+    ) # *
+    client_loaders = data_bundle["client_loaders"] # *
+    val_loader = data_bundle["val_loader"] # *
+    test_loader = data_bundle["test_loader"] # *
+    print(f"\n{dataset_name.upper()} client sizes:")
+
     for client_id, loader in client_loaders.items():
         print(f"client {client_id}: {len(loader.dataset)} samples")
     
