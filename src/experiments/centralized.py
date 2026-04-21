@@ -120,17 +120,7 @@ def evaluate(model, data_loader, criterion, device):
 def run_centralized(config, result_dir):
     # 1. 设置随机种子和设备
     set_seed(config["seed"])
-
-    # 如果用户指定 cpu，则使用 cpu；
-    # 如果用户指定 cuda 且当前机器支持 GPU，则使用对应 cuda；
-    # 否则自动回退到 cpu。
-    if config["device"] == "cpu":
-        device = torch.device("cpu")
-    elif torch.cuda.is_available():
-        device = torch.device(config["device"])
-    else:
-        device = torch.device("cpu")
-
+    device=config["device"] if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
     # 确保结果目录存在
