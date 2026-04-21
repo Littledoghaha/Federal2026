@@ -124,10 +124,11 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
     # =========================
     # 1. 各任务 Val/Test Accuracy 曲线
     # =========================
-    plt.figure(figsize=(10, 5))
+    # plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(14, 6)) # *
 
     # 准备一些不同的 marker，避免多任务时完全一样
-    markers = ["o", "s", "^", "D", "x", "*"]
+    # markers = ["o", "s", "^", "D", "x", "*"]
 
     for idx, tid in enumerate(task_ids):
         val_key = f"task{tid}_val_acc"
@@ -136,23 +137,25 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
         val_plot = [acc if acc is not None else math.nan for acc in history[val_key]]
         test_plot = [acc if acc is not None else math.nan for acc in history[test_key]]
 
-        marker = markers[idx % len(markers)]
+        # marker = markers[idx % len(markers)]
 
         plt.plot(
             x,
             val_plot,
-            marker=marker,
-            markersize=3,
-            linewidth=1.5,
+            # marker=marker,
+            # markersize=3,
+            # linewidth=1.5,
+            linewidth=1.8,
             label=f"Task{tid} Val Acc"
         )
         plt.plot(
             x,
             test_plot,
-            marker=marker,
-            markersize=3,
-            linewidth=1.5,
-            linestyle="--",
+            # marker=marker,
+            # markersize=3,
+            # linewidth=1.5,
+            linewidth=1.8,
+            # linestyle="--",
             label=f"Task{tid} Test Acc"
         )
 
@@ -184,7 +187,8 @@ def plot_continual_history(history, save_dir, experiment_name="continual_cifar10
         fg_tick_positions = [x_fg[i - 1] for i in fg_tick_positions]
 
         plt.figure(figsize=(8, 4))
-        plt.plot(x_fg, fg_plot, marker="^", color="red", label="Forgetting")
+        # plt.plot(x_fg, fg_plot, marker="^", color="red", label="Forgetting")
+        plt.plot(x_fg, fg_plot, color="red", linewidth=2.0, label="Forgetting") # *
         plt.xlabel("Training Stage")
         plt.ylabel("Forgetting")
         plt.title(f"{experiment_name} - Forgetting")
@@ -220,12 +224,13 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
     # 1. Accuracy comparison
     # 这里只画 test acc，对比更直观
     # =========================
-    plt.figure(figsize=(10, 5))
+    # plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(14, 6)) # *
 
-    markers = ["o", "s", "^", "D", "x", "*"]
+    # markers = ["o", "s", "^", "D", "x", "*"]
 
     for idx, tid in enumerate(task_ids):
-        marker = markers[idx % len(markers)]
+        # marker = markers[idx % len(markers)]
 
         no_test = [
             acc if acc is not None else math.nan
@@ -239,14 +244,16 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
         plt.plot(
             x,
             no_test,
-            marker=marker,
+            linewidth=1.8,
+            # marker=marker,
             label=f"Task{tid} Test (No Replay)"
         )
         plt.plot(
             x,
             re_test,
-            marker=marker,
-            linestyle="--",
+            # marker=marker,
+            linewidth=1.8,
+            # linestyle="--",
             label=f"Task{tid} Test (Replay)"
         )
 
@@ -277,8 +284,11 @@ def plot_continual_comparison(history_no_replay, history_replay, save_dir,
         fg_tick_positions = [x_fg[i - 1] for i in fg_tick_positions]
 
         plt.figure(figsize=(9, 5))
-        plt.plot(x_fg, no_fg, marker="^", color="red", label="Forgetting (No Replay)")
-        plt.plot(x_fg, re_fg, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
+        # plt.plot(x_fg, no_fg, marker="^", color="red", label="Forgetting (No Replay)")
+        # plt.plot(x_fg, re_fg, marker="^", color="green", linestyle="--", label="Forgetting (Replay)")
+        plt.plot(x_fg, no_fg, color="red", linewidth=2.0, label="Forgetting (No Replay)") # *
+        # plt.plot(x_fg, re_fg, color="green", linewidth=2.0, linestyle="--", label="Forgetting (Replay)") # *
+        plt.plot(x_fg, re_fg, color="green", linewidth=2.0, label="Forgetting (Replay)") # *
         plt.xlabel("Training Stage")
         plt.ylabel("Forgetting")
         plt.title(f"{experiment_name} - Forgetting Comparison")

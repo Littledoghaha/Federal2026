@@ -67,8 +67,10 @@ def plot_history(history, save_dir, experiment_name="standard_experiment"):
     # 1. Loss 图：优先画 train vs val 对比
     if "train_loss" in history and "val_loss" in history:
         plt.figure(figsize=(6, 4))
-        plt.plot(x, history["train_loss"], marker="o", label="Train Loss")
-        plt.plot(x, history["val_loss"], marker="s", label="Val Loss")
+        # plt.plot(x, history["train_loss"], marker="o", label="Train Loss")
+        # plt.plot(x, history["val_loss"], marker="s", label="Val Loss")
+        plt.plot(x, history["train_loss"], linewidth=1.8, label="Train Loss") # *
+        plt.plot(x, history["val_loss"], linewidth=1.8, label="Val Loss") # *
         plt.xlabel(xlabel)
         plt.ylabel("Loss")
         plt.title(f"{experiment_name} - Train vs Val Loss")
@@ -79,7 +81,8 @@ def plot_history(history, save_dir, experiment_name="standard_experiment"):
         plt.close()
     elif "val_loss" in history:
         plt.figure(figsize=(6, 4))
-        plt.plot(x, history["val_loss"], marker="o", label="Val Loss")
+        # plt.plot(x, history["val_loss"], marker="o", label="Val Loss")
+        plt.plot(x, history["val_loss"], linewidth=1.8, label="Val Loss") # *
         plt.xlabel(xlabel)
         plt.ylabel("Loss")
         plt.title(f"{experiment_name} - Val Loss")
@@ -92,8 +95,10 @@ def plot_history(history, save_dir, experiment_name="standard_experiment"):
     # 2. Accuracy 图：优先画 train vs val 对比
     if "train_acc" in history and "val_acc" in history:
         plt.figure(figsize=(6, 4))
-        plt.plot(x, history["train_acc"], marker="o", label="Train Acc")
-        plt.plot(x, history["val_acc"], marker="s", label="Val Acc")
+        # plt.plot(x, history["train_acc"], marker="o", label="Train Acc")
+        # plt.plot(x, history["val_acc"], marker="s", label="Val Acc")
+        plt.plot(x, history["train_acc"], linewidth=1.8, label="Train Acc") # *
+        plt.plot(x, history["val_acc"], linewidth=1.8, label="Val Acc") # *
         plt.xlabel(xlabel)
         plt.ylabel("Accuracy")
         plt.title(f"{experiment_name} - Train vs Val Accuracy")
@@ -104,7 +109,8 @@ def plot_history(history, save_dir, experiment_name="standard_experiment"):
         plt.close()
     elif "val_acc" in history:
         plt.figure(figsize=(6, 4))
-        plt.plot(x, history["val_acc"], marker="o", label="Val Acc")
+        # plt.plot(x, history["val_acc"], marker="o", label="Val Acc")
+        plt.plot(x, history["val_acc"], linewidth=1.8, label="Val Acc") # *
         plt.xlabel(xlabel)
         plt.ylabel("Accuracy")
         plt.title(f"{experiment_name} - Val Accuracy")
