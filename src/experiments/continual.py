@@ -42,7 +42,7 @@ def run_continual(config, save_dir):
     model_args = SimpleNamespace(
         lambda_l1=config.get("lambda_l1", 1e-4),
         lambda_mask=config.get("lambda_mask", 1e-4),
-        device=device,
+        device=device
     )
 
     # =========================
